@@ -4,7 +4,6 @@ from PyQt6.QtCore import Qt
 
 # 导入选项卡
 from tabs.recognition_tab import RecognitionTab
-from tabs.history_tab import HistoryTab
 from tabs.library_tab import LibraryTab
 
 class SettingsTab(QWidget):
@@ -80,7 +79,6 @@ class MusicRecognitionApp(QMainWindow):
         
         # 添加选项卡
         tab_widget.addTab(RecognitionTab(), "识别")
-        tab_widget.addTab(HistoryTab(), "历史记录")
         tab_widget.addTab(LibraryTab(), "音乐库")
         tab_widget.addTab(SettingsTab(), "设置")
         tab_widget.addTab(ProfileTab(), "我的")
