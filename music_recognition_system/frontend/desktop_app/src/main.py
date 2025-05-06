@@ -5,17 +5,7 @@ from PyQt6.QtCore import Qt
 # 导入选项卡
 from tabs.recognition_tab import RecognitionTab
 from tabs.history_tab import HistoryTab
-
-class LibraryTab(QWidget):
-    """音乐库选项卡"""
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        layout = QVBoxLayout()
-        label = QLabel("音乐库 - 开发中")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(label)
-        self.setLayout(layout)
+from tabs.library_tab import LibraryTab
 
 class SettingsTab(QWidget):
     """设置选项卡"""

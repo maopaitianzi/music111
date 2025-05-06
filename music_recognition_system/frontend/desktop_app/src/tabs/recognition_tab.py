@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
-                            QPushButton, QLabel, QFileDialog, QProgressBar, QSlider)
+                            QPushButton, QLabel, QFileDialog, QProgressBar, QSlider, QStackedWidget)
 from PyQt6.QtCore import Qt, QTimer, QUrl, QThread, pyqtSignal
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtGui import QFont, QPalette, QColor
@@ -148,6 +148,13 @@ class RecognitionTab(QWidget):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("font-size: 24px; font-weight: bold; margin: 20px 0;")
         
+        # 创建堆叠小部件来存放上传界面和结果界面
+        self.stacked_widget = QStackedWidget()
+        
+        # 上传页面
+        upload_page = QWidget()
+        upload_page_layout = QVBoxLayout(upload_page)
+        
         # 上传区域
         upload_widget = QWidget()
         upload_widget.setStyleSheet("""
@@ -254,11 +261,14 @@ class RecognitionTab(QWidget):
         upload_layout.addWidget(upload_text)
         upload_layout.addLayout(buttons_layout)  # 将按钮布局添加到上传区域布局
         
-        # 识别结果区域
-        self.result_widget = QWidget()
-        self.result_widget.setVisible(False)
-        result_layout = QVBoxLayout(self.result_widget)
+        # 添加上传部件到上传页面
+        upload_page_layout.addWidget(upload_widget)
         
+        # 结果页面
+        result_page = QWidget()
+        result_page_layout = QVBoxLayout(result_page)
+        
+        # 结果区域
         result_title = QLabel("识别结果")
         result_title.setStyleSheet("font-size: 18px; font-weight: bold; margin-bottom: 10px;")
         
@@ -272,17 +282,36 @@ class RecognitionTab(QWidget):
         # 音乐播放器
         self.player_widget = MusicPlayerWidget()
         
-        result_layout.addWidget(result_title)
-        result_layout.addWidget(self.result_info)
-        result_layout.addWidget(self.result_confidence)
-        result_layout.addWidget(self.player_widget)
+        # 返回按钮 - 返回到上传界面
+        self.back_button = QPushButton("返回上传")
+        self.back_button.setStyleSheet("""
+            QPushButton {
+                background-color: #E0E0E0;
+                color: #333333;
+                border-radius: 18px;
+                padding: 8px 15px;
+                font-weight: bold;
+                max-width: 120px;
+            }
+            QPushButton:hover {
+                background-color: #D0D0D0;
+            }
+        """)
+        self.back_button.clicked.connect(self.show_upload_page)
         
-        # 添加到主布局
-        layout.addWidget(title)
-        layout.addWidget(upload_widget, 1)  # 1是拉伸因子
-        layout.addWidget(self.result_widget)
+        # 添加组件到结果页面
+        result_page_layout.addWidget(result_title)
+        result_page_layout.addWidget(self.result_info)
+        result_page_layout.addWidget(self.result_confidence)
+        result_page_layout.addWidget(self.player_widget)
+        result_page_layout.addWidget(self.back_button, alignment=Qt.AlignmentFlag.AlignLeft)
         
-        self.setLayout(layout)
+        # 将页面添加到堆叠部件
+        self.stacked_widget.addWidget(upload_page)
+        self.stacked_widget.addWidget(result_page)
+        
+        # 默认显示上传页面
+        self.stacked_widget.setCurrentIndex(0)
         
         # 处理识别进度的进度条
         self.progress_bar = QProgressBar()
@@ -304,7 +333,20 @@ class RecognitionTab(QWidget):
         """)
         self.progress_bar.setVisible(False)
         
+        # 添加到主布局
+        layout.addWidget(title)
+        layout.addWidget(self.stacked_widget)
         layout.addWidget(self.progress_bar)
+        
+        self.setLayout(layout)
+    
+    def show_upload_page(self):
+        """显示上传页面"""
+        self.stacked_widget.setCurrentIndex(0)
+    
+    def show_result_page(self):
+        """显示结果页面"""
+        self.stacked_widget.setCurrentIndex(1)
     
     def open_file_dialog(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -345,8 +387,6 @@ class RecognitionTab(QWidget):
         
         if result["success"]:
             # 显示结果
-            self.result_widget.setVisible(True)
-            
             self.result_info.setText(
                 f"歌曲: {result['song_name']}\n"
                 f"歌手: {result['artist']}\n"
@@ -355,6 +395,9 @@ class RecognitionTab(QWidget):
             )
             
             self.result_confidence.setText(f"置信度: {result['confidence']*100:.1f}%")
+            
+            # 切换到结果页面
+            self.show_result_page()
             
             # 延迟隐藏进度条
             QTimer.singleShot(1000, lambda: self.progress_bar.setVisible(False)) 
