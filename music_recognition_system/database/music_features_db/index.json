@@ -11,7 +11,7 @@
     "file_path": "C:/Users/86181/Desktop/音乐识别系统/Music\\M500002MTvXX1ZJ62w.mp3",
     "duration": 220.50997732426305,
     "feature_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\features\\163c67d46f0be84075050a34c3745bf6.pkl",
-    "added_time": "2025-05-08 16:26:22"
+    "added_time": "2025-05-08 17:13:00"
   },
   "2d8c03dcb98d2778bc8dd01123efb84f": {
     "file_name": "M8000009LQin3AvjLq.mp3",
@@ -40,13 +40,6 @@
     "duration": 159.13795918367347,
     "feature_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\features\\a785bce8c998188b637f5a051af25e15.pkl",
     "added_time": "2025-05-08 16:26:28"
-  },
-  "a0e2eb3edb5b3d0523a707ccfa03dd17": {
-    "file_name": "王绎龙 - 午夜DJ.mp3",
-    "file_path": "C:/Users/86181/Desktop/音乐识别系统/Music\\王绎龙 - 午夜DJ.mp3",
-    "duration": 291.68063492063493,
-    "feature_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\features\\a0e2eb3edb5b3d0523a707ccfa03dd17.pkl",
-    "added_time": "2025-05-07 11:29:43"
   },
   "bf07f4161c19169775ca023774b0ea6c": {
     "file_name": "db_add_1746689983.wav",
