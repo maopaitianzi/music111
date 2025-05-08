@@ -683,9 +683,11 @@ class RecognitionTab(QWidget):
         if result["success"]:
             # 更新界面信息
             song_name = result["song_name"]
+            # 优先使用识别结果中的艺术家信息
             artist_name = result["artist"]
             
             self.song_label.setText(song_name)
+            # 确保显示歌手信息
             self.artist_label.setText(f"歌手: {artist_name}")
             
             # 专辑信息处理

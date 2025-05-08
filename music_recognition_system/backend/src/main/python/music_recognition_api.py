@@ -186,11 +186,35 @@ def match_features(query_features: Dict[str, Any], db: FeatureDatabase) -> Tuple
                 if file_name in SONG_METADATA:
                     best_match = SONG_METADATA[file_name]
                 else:
-                    # 如果找不到元数据，创建基本信息
+                    # 如果找不到元数据，从文件名尝试提取作者信息
+                    author = "未知艺术家"
+                    # 尝试从文件路径或文件名获取作者信息
+                    file_path = file_info.get("file_path", "")
+                    
+                    # 检查文件路径是否包含作者信息
+                    if file_path and os.path.exists(file_path):
+                        try:
+                            # 尝试使用标签库读取MP3文件的作者信息
+                            import mutagen
+                            audio = mutagen.File(file_path, easy=True)
+                            if audio and "artist" in audio:
+                                author = audio["artist"][0]
+                                logger.info(f"从文件标签中读取到作者信息: {author}")
+                        except Exception as e:
+                            logger.warning(f"读取文件标签失败: {str(e)}")
+                    
+                    # 如果还是获取不到作者，尝试从文件名解析
+                    if author == "未知艺术家" and " - " in file_name:
+                        parts = file_name.split(" - ", 1)
+                        if len(parts) > 1:
+                            author = parts[0].strip()
+                            logger.info(f"从文件名中解析到作者信息: {author}")
+                    
+                    # 创建基本信息
                     best_match = {
                         "id": file_id,
                         "name": file_name,
-                        "artist": "未知艺术家",
+                        "artist": author,  # 使用提取的作者信息
                         "album": "未知专辑",
                         "year": "",
                         "genre": "未知",
