@@ -138,18 +138,40 @@ class FeatureExtractionThread(QThread):
         self.folder_path = folder_path
         self.database_path = database_path
         self.extractor = AudioFeatureExtractor()
-        self.db = FeatureDatabase(database_path)
+        try:
+            self.db = FeatureDatabase(database_path)
+            print(f"成功初始化特征数据库: {database_path}")
+        except Exception as e:
+            print(f"初始化特征数据库失败: {str(e)}")
+            print(f"Stack trace: {traceback.format_exc()}")
+            self.db = None
         self.use_filename = use_filename
         self.default_author = default_author
         
     def run(self):
         try:
+            # 验证数据库对象是否有效
+            if self.db is None:
+                self.extraction_completed.emit(False, "特征数据库初始化失败，无法继续处理", 0)
+                return
+            
+            # 验证文件夹路径存在
+            if not os.path.exists(self.folder_path):
+                self.extraction_completed.emit(False, f"文件夹路径不存在: {self.folder_path}", 0)
+                return
+            
             # 获取文件夹中的所有音频文件
             audio_files = []
-            for root, _, files in os.walk(self.folder_path):
-                for file in files:
-                    if file.lower().endswith(('.mp3', '.wav', '.flac', '.ogg', '.m4a')):
-                        audio_files.append(os.path.join(root, file))
+            try:
+                for root, _, files in os.walk(self.folder_path):
+                    for file in files:
+                        if file.lower().endswith(('.mp3', '.wav', '.flac', '.ogg', '.m4a')):
+                            audio_files.append(os.path.join(root, file))
+            except Exception as e:
+                self.extraction_completed.emit(False, f"扫描文件夹出错: {str(e)}", 0)
+                print(f"扫描文件夹出错: {str(e)}")
+                print(f"Stack trace: {traceback.format_exc()}")
+                return
             
             total_files = len(audio_files)
             if total_files == 0:
@@ -157,11 +179,33 @@ class FeatureExtractionThread(QThread):
                 return
                 
             success_count = 0
+            error_count = 0
+            errors = []
+            
             # 处理每个音频文件
             for i, audio_file in enumerate(audio_files):
                 try:
+                    # 验证文件是否存在
+                    if not os.path.exists(audio_file):
+                        self.file_processed.emit(os.path.basename(audio_file), False)
+                        errors.append(f"文件不存在: {audio_file}")
+                        continue
+                        
+                    # 验证文件是否可读
+                    if not os.access(audio_file, os.R_OK):
+                        self.file_processed.emit(os.path.basename(audio_file), False)
+                        errors.append(f"文件无法读取: {audio_file}")
+                        continue
+                    
                     # 提取特征
                     features = self.extractor.extract_features(audio_file)
+                    
+                    # 如果提取失败，处理错误
+                    if "error" in features:
+                        self.file_processed.emit(os.path.basename(audio_file), False)
+                        errors.append(f"特征提取失败 ({os.path.basename(audio_file)}): {features['error']}")
+                        error_count += 1
+                        continue
                     
                     # 添加歌曲信息
                     if self.use_filename:
@@ -173,27 +217,64 @@ class FeatureExtractionThread(QThread):
                     # 设置默认作者
                     features["author"] = self.default_author
                     
+                    # 添加时间戳
+                    from datetime import datetime
+                    features["added_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    
                     # 添加到数据库
-                    success = "error" not in features and self.db.add_feature(features)
-                    if success:
-                        success_count += 1
-                        self.file_processed.emit(os.path.basename(audio_file), True)
-                    else:
+                    try:
+                        success = self.db.add_feature(features)
+                        if success:
+                            success_count += 1
+                            self.file_processed.emit(os.path.basename(audio_file), True)
+                        else:
+                            self.file_processed.emit(os.path.basename(audio_file), False)
+                            errors.append(f"无法添加到数据库: {os.path.basename(audio_file)}")
+                            error_count += 1
+                    except Exception as e:
                         self.file_processed.emit(os.path.basename(audio_file), False)
+                        errors.append(f"添加到数据库时出错 ({os.path.basename(audio_file)}): {str(e)}")
+                        error_count += 1
+                        print(f"添加到数据库时出错: {str(e)}")
+                        print(f"Stack trace: {traceback.format_exc()}")
+                        
                 except Exception as e:
                     self.file_processed.emit(os.path.basename(audio_file), False)
+                    errors.append(f"处理文件出错 ({os.path.basename(audio_file)}): {str(e)}")
+                    error_count += 1
+                    print(f"处理文件出错: {str(e)}")
+                    print(f"Stack trace: {traceback.format_exc()}")
                 
                 # 更新进度
                 self.progress_updated.emit(i + 1, total_files)
             
-            self.extraction_completed.emit(
-                success_count > 0, 
-                f"成功提取 {success_count}/{total_files} 个音频文件的特征",
-                success_count
-            )
+            # 输出错误日志用于调试
+            if errors:
+                print(f"特征提取过程中出现 {len(errors)} 个错误:")
+                for i, error in enumerate(errors):
+                    print(f"{i+1}. {error}")
+            
+            # 发送完成信号
+            if success_count > 0:
+                self.extraction_completed.emit(
+                    True, 
+                    f"成功提取 {success_count}/{total_files} 个音频文件的特征" + 
+                    (f" (失败: {error_count})" if error_count > 0 else ""),
+                    success_count
+                )
+            else:
+                error_msg = "未能成功提取任何特征"
+                if errors and len(errors) <= 3:
+                    error_msg += "。错误: " + "; ".join(errors)
+                elif errors:
+                    error_msg += f"。出现多个错误 ({len(errors)} 个)"
+                self.extraction_completed.emit(False, error_msg, 0)
             
         except Exception as e:
-            self.extraction_completed.emit(False, f"特征提取过程中出错: {str(e)}", 0)
+            error_msg = f"特征提取过程中出错: {str(e)}"
+            print(error_msg)
+            print(f"Stack trace: {traceback.format_exc()}")
+            self.extraction_completed.emit(False, error_msg, 0)
 
 class FeatureLibraryTab(QWidget):
     """特征库创建选项卡"""
@@ -393,6 +474,25 @@ class FeatureLibraryTab(QWidget):
         self.folder_label = QLabel("未选择文件夹")
         self.folder_label.setStyleSheet("color: #666666; margin: 10px 0;")
         
+        # 添加文件名和作者设置选项
+        options_layout = QHBoxLayout()
+        
+        # 使用文件名作为歌曲名
+        self.use_filename_checkbox = QCheckBox("使用文件名作为歌曲名")
+        self.use_filename_checkbox.setChecked(True)
+        
+        # 默认作者输入
+        author_layout = QHBoxLayout()
+        author_label = QLabel("默认作者:")
+        self.default_author_input = QLineEdit()
+        self.default_author_input.setPlaceholderText("未知")
+        author_layout.addWidget(author_label)
+        author_layout.addWidget(self.default_author_input)
+        
+        options_layout.addWidget(self.use_filename_checkbox)
+        options_layout.addLayout(author_layout)
+        options_layout.addStretch()
+        
         # 进度条
         self.progress_layout = QVBoxLayout()
         
@@ -440,6 +540,7 @@ class FeatureLibraryTab(QWidget):
         layout.addWidget(description)
         layout.addLayout(button_layout)
         layout.addWidget(self.folder_label)
+        layout.addLayout(options_layout)  # 新增的选项布局
         layout.addLayout(self.progress_layout)
         layout.addWidget(self.file_list_label)
         layout.addWidget(self.file_list)
@@ -497,50 +598,77 @@ class FeatureLibraryTab(QWidget):
     
     def update_feature_table(self, features):
         """更新特征表格数据"""
-        # 清空表格
-        self.feature_table.setRowCount(0)
-        
-        # 添加数据
-        for i, feature in enumerate(features):
-            self.feature_table.insertRow(i)
+        try:
+            # 确保表格的列数正确
+            num_columns = 7  # 7列: ID, 文件名, 歌曲名, 作者, 文件路径, 时长, 添加时间
+            if self.feature_table.columnCount() != num_columns:
+                print(f"调整表格列数: 从 {self.feature_table.columnCount()} 到 {num_columns}")
+                self.feature_table.setColumnCount(num_columns)
+                self.feature_table.setHorizontalHeaderLabels(["ID", "文件名", "歌曲名", "作者", "文件路径", "时长(秒)", "添加时间"])
             
-            # 设置ID（隐藏但可用于操作）
-            id_item = QTableWidgetItem(feature.get("id", ""))
-            id_item.setToolTip(feature.get("id", ""))
-            self.feature_table.setItem(i, 0, id_item)
+            # 清空表格
+            self.feature_table.setRowCount(0)
             
-            # 设置文件名
-            name_item = QTableWidgetItem(feature.get("file_name", ""))
-            self.feature_table.setItem(i, 1, name_item)
+            if not features:
+                print("没有特征数据需要显示")
+                return
+                
+            print(f"更新表格：共有 {len(features)} 条记录")
             
-            # 设置歌曲名
-            song_name_item = QTableWidgetItem(feature.get("song_name", ""))
-            self.feature_table.setItem(i, 2, song_name_item)
+            # 添加数据
+            for i, feature in enumerate(features):
+                try:
+                    self.feature_table.insertRow(i)
+                    
+                    # 设置ID（隐藏但可用于操作）
+                    id_item = QTableWidgetItem(str(feature.get("id", "")))
+                    id_item.setToolTip(str(feature.get("id", "")))
+                    self.feature_table.setItem(i, 0, id_item)
+                    
+                    # 设置文件名
+                    name_item = QTableWidgetItem(str(feature.get("file_name", "")))
+                    self.feature_table.setItem(i, 1, name_item)
+                    
+                    # 设置歌曲名
+                    song_name_item = QTableWidgetItem(str(feature.get("song_name", "")))
+                    self.feature_table.setItem(i, 2, song_name_item)
+                    
+                    # 设置作者
+                    author_item = QTableWidgetItem(str(feature.get("author", "")))
+                    self.feature_table.setItem(i, 3, author_item)
+                    
+                    # 设置文件路径
+                    path_item = QTableWidgetItem(str(feature.get("file_path", "")))
+                    path_item.setToolTip(str(feature.get("file_path", "")))
+                    self.feature_table.setItem(i, 4, path_item)
+                    
+                    # 设置时长
+                    duration = feature.get("duration", 0)
+                    duration_str = f"{duration:.2f}" if isinstance(duration, (int, float)) else str(duration)
+                    duration_item = QTableWidgetItem(duration_str)
+                    self.feature_table.setItem(i, 5, duration_item)
+                    
+                    # 设置添加时间
+                    time_item = QTableWidgetItem(str(feature.get("added_time", "")))
+                    self.feature_table.setItem(i, 6, time_item)
+                except Exception as e:
+                    print(f"添加行 {i} 时出错: {str(e)}")
+                    traceback.print_exc()
             
-            # 设置作者
-            author_item = QTableWidgetItem(feature.get("author", ""))
-            self.feature_table.setItem(i, 3, author_item)
+            # 设置列宽
+            self.feature_table.setColumnWidth(0, 60)  # ID列
+            self.feature_table.setColumnWidth(1, 200)  # 文件名列
+            self.feature_table.setColumnWidth(2, 200)  # 歌曲名列
+            self.feature_table.setColumnWidth(3, 120)  # 作者列
+            self.feature_table.setColumnWidth(5, 80)   # 时长列
+            self.feature_table.setColumnWidth(6, 150)  # 添加时间列
             
-            # 设置文件路径
-            path_item = QTableWidgetItem(feature.get("file_path", ""))
-            path_item.setToolTip(feature.get("file_path", ""))
-            self.feature_table.setItem(i, 4, path_item)
+            # 设置文件路径列自动拉伸
+            self.feature_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
             
-            # 设置时长
-            duration = feature.get("duration", 0)
-            duration_str = f"{duration:.2f}" if isinstance(duration, (int, float)) else str(duration)
-            duration_item = QTableWidgetItem(duration_str)
-            self.feature_table.setItem(i, 5, duration_item)
-            
-            # 设置添加时间
-            time_item = QTableWidgetItem(feature.get("added_time", ""))
-            self.feature_table.setItem(i, 6, time_item)
-        
-        # 设置列宽
-        self.feature_table.setColumnWidth(0, 60)  # ID列
-        self.feature_table.setColumnWidth(1, 200)  # 文件名列
-        self.feature_table.setColumnWidth(3, 80)   # 时长列
-        self.feature_table.setColumnWidth(4, 150)  # 添加时间列
+        except Exception as e:
+            print(f"更新特征表格失败: {str(e)}")
+            traceback.print_exc()
     
     def filter_features(self):
         """根据搜索条件筛选特征"""
