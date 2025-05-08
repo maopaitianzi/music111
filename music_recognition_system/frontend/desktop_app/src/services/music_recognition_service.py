@@ -33,13 +33,18 @@ class MusicRecognitionService(QObject):
             if not os.path.exists(file_path):
                 self.recognition_error.emit(f"文件不存在: {file_path}")
                 return
-                
-            # 在实际应用中，这里会调用后端API
-            # 目前使用模拟数据进行演示
-            result = self._get_mock_recognition_result(file_path)
             
-            # 如果启用了真实API，可以使用以下代码
-            # result = self._call_recognition_api(file_path)
+            try:
+                # 调用真实API进行识别
+                result = self._call_recognition_api(file_path)
+                print(f"成功调用API识别: {os.path.basename(file_path)}")
+            except Exception as api_error:
+                # API调用失败时的错误处理
+                print(f"API调用失败，使用备选方案: {str(api_error)}")
+                # 使用模拟数据作为备选
+                result = self._get_mock_recognition_result(file_path)
+                result["is_local_recognition"] = True
+                print(f"使用本地模拟识别: {os.path.basename(file_path)}")
             
             # 保存到最近结果
             self.recent_results.append(result)
@@ -93,20 +98,58 @@ class MusicRecognitionService(QObject):
         """
         try:
             # 准备要上传的文件
-            files = {'audio_file': open(file_path, 'rb')}
-            
-            # 发送POST请求到识别API
-            response = requests.post(
-                f"{self.api_base_url}/recognize", 
-                files=files
-            )
-            
-            # 检查响应状态
-            if response.status_code == 200:
-                return response.json()
-            else:
-                raise Exception(f"API错误: {response.status_code} - {response.text}")
+            with open(file_path, 'rb') as audio_file:
+                files = {'audio_file': (os.path.basename(file_path), audio_file, 'audio/mpeg')}
                 
+                # 发送POST请求到识别API
+                print(f"正在发送文件到API: {os.path.basename(file_path)}...")
+                response = requests.post(
+                    f"{self.api_base_url}/recognize", 
+                    files=files,
+                    timeout=30  # 设置超时时间为30秒
+                )
+                
+                # 检查响应状态
+                if response.status_code == 200:
+                    result = response.json()
+                    print(f"API响应数据: {result}")  # 打印响应数据以便调试
+                    
+                    # 确保所有必要的字段都存在，缺失则使用默认值
+                    if result.get("success", False):
+                        # 如果专辑名与歌曲名相同，则使用歌曲名作为专辑名
+                        album_name = result.get("album", "")
+                        if not album_name or album_name == "未知专辑":
+                            # 尝试从文件名推断专辑信息
+                            basename = os.path.splitext(os.path.basename(file_path))[0]
+                            if " - " in basename:
+                                parts = basename.split(" - ", 1)
+                                if len(parts) > 1:
+                                    artist = parts[0].strip()
+                                    album_name = f"{artist}专辑"
+                            else:
+                                album_name = "未知专辑"
+                        
+                        return {
+                            "success": True,
+                            "song_name": result.get("song_name", "未知"),
+                            "artist": result.get("artist", "未知艺术家"),
+                            "album": album_name,
+                            "release_year": result.get("release_year", ""),
+                            "genre": result.get("genre", "未知"),
+                            "cover_url": result.get("cover_url", ""),
+                            "confidence": result.get("confidence", 0.0),
+                            "file_path": file_path
+                        }
+                    else:
+                        # 识别失败返回错误信息
+                        raise Exception(result.get("error", "未找到匹配的歌曲"))
+                else:
+                    raise Exception(f"API错误: {response.status_code} - {response.text}")
+                
+        except requests.exceptions.ConnectionError:
+            raise Exception("无法连接到API服务，请确认API服务是否运行")
+        except requests.exceptions.Timeout:
+            raise Exception("API请求超时，服务可能繁忙")
         except Exception as e:
             raise Exception(f"调用识别API失败: {str(e)}")
     
@@ -156,8 +199,22 @@ class MusicRecognitionService(QObject):
         返回:
             模拟的识别结果字典
         """
-        # 根据文件名随机选择一个"识别结果"
+        # 根据文件名选择不同结果
         file_name = os.path.basename(file_path).lower()
+        basename = os.path.splitext(os.path.basename(file_path))[0]
+        
+        # 尝试从文件名解析艺术家和歌曲名
+        artist = "未知艺术家"
+        song_name = basename
+        album_name = ""
+        
+        # 处理常见的"艺术家 - 歌曲名"文件名格式
+        if " - " in basename:
+            parts = basename.split(" - ", 1)
+            if len(parts) > 1:
+                artist = parts[0].strip()
+                song_name = parts[1].strip()
+                album_name = f"{artist}专辑"
         
         # 一些示例结果
         mock_results = [
@@ -170,7 +227,6 @@ class MusicRecognitionService(QObject):
                 "genre": "流行",
                 "cover_url": "https://example.com/cover1.jpg",
                 "confidence": 0.95,
-                "duration": 215.0,
                 "file_path": file_path
             },
             {
@@ -182,7 +238,6 @@ class MusicRecognitionService(QObject):
                 "genre": "流行",
                 "cover_url": "https://example.com/cover2.jpg",
                 "confidence": 0.92,
-                "duration": 243.0,
                 "file_path": file_path
             },
             {
@@ -194,7 +249,6 @@ class MusicRecognitionService(QObject):
                 "genre": "流行",
                 "cover_url": "https://example.com/cover3.jpg",
                 "confidence": 0.89,
-                "duration": 193.0,
                 "file_path": file_path
             }
         ]
@@ -205,7 +259,16 @@ class MusicRecognitionService(QObject):
         elif "舞厅" in file_name:
             return mock_results[1]
         else:
-            # 使用文件名中的特征定制结果
-            import hashlib
-            hash_val = int(hashlib.md5(file_name.encode()).hexdigest(), 16) % 3
-            return mock_results[hash_val] 
+            # 创建自定义结果，使用从文件名解析的信息
+            custom_result = {
+                "success": True,
+                "song_name": song_name,
+                "artist": artist,
+                "album": album_name if album_name else "专辑: " + song_name,
+                "release_year": "",
+                "genre": "未知",
+                "cover_url": "",
+                "confidence": 0.85,
+                "file_path": file_path
+            }
+            return custom_result 

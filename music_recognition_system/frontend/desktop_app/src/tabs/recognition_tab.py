@@ -651,15 +651,47 @@ class RecognitionTab(QWidget):
             # 更新界面信息
             self.song_label.setText(result["song_name"])
             self.artist_label.setText(f"歌手: {result['artist']}")
-            self.album_label.setText(f"专辑: {result['album']}")
-            self.year_label.setText(f"发行年份: {result['release_year']}")
             
-            if "genre" in result:
+            # 专辑信息处理
+            album = result.get("album", "")
+            if album and album != "未知专辑":
+                # 如果专辑名不以"专辑:"开头，添加前缀
+                if not album.startswith("专辑:"):
+                    self.album_label.setText(f"专辑: {album}")
+                else:
+                    self.album_label.setText(album)
+                self.album_label.setVisible(True)
+            else:
+                # 尝试使用歌曲名作为专辑名
+                self.album_label.setText(f"专辑: {result['song_name']}")
+                self.album_label.setVisible(True)
+            
+            # 发行年份可能为空
+            if "release_year" in result and result["release_year"]:
+                self.year_label.setText(f"发行年份: {result['release_year']}")
+                self.year_label.setVisible(True)
+            else:
+                self.year_label.setText("")
+                self.year_label.setVisible(False)
+            
+            # 流派可能为空
+            if "genre" in result and result["genre"] and result["genre"] != "未知":
                 self.genre_label.setText(f"流派: {result['genre']}")
+                self.genre_label.setVisible(True)
             else:
                 self.genre_label.setText("")
-                
-            self.confidence_label.setText(f"置信度: {result['confidence']*100:.1f}%")
+                self.genre_label.setVisible(False)
+            
+            # 显示置信度
+            confidence = result.get('confidence', 0) * 100
+            self.confidence_label.setText(f"置信度: {confidence:.1f}%")
+            
+            # 标记是否为本地识别结果
+            if result.get("is_local_recognition", False):
+                self.confidence_label.setText(f"置信度: {confidence:.1f}% (本地识别)")
+                self.confidence_label.setStyleSheet("font-size: 14px; color: #FF6B6B; margin-top: 10px;")
+            else:
+                self.confidence_label.setStyleSheet("font-size: 14px; color: #666666; margin-top: 10px;")
             
             # 加载封面图像
             if "cover_url" in result and result["cover_url"]:
@@ -687,28 +719,35 @@ class RecognitionTab(QWidget):
     def load_cover_image(self, url):
         """加载封面图像"""
         try:
-            # 获取图像
-            response = requests.get(url)
-            if response.status_code == 200:
-                # 将图像数据转换为PIL图像
-                image_data = response.content
-                image = Image.open(io.BytesIO(image_data))
-                
-                # 调整大小
-                image = image.resize((150, 150))
-                
-                # 转换为QPixmap
-                qimage = ImageQt.ImageQt(image)
-                pixmap = QPixmap.fromImage(qimage)
-                
-                # 设置到标签
-                self.cover_label.setPixmap(pixmap)
-                self.cover_label.setStyleSheet("border-radius: 5px;")
+            if url.startswith("http://") or url.startswith("https://"):
+                # 获取网络图像
+                try:
+                    response = requests.get(url, timeout=10)
+                    if response.status_code == 200:
+                        # 将图像数据转换为PIL图像
+                        image_data = response.content
+                        image = Image.open(io.BytesIO(image_data))
+                    else:
+                        raise Exception(f"获取封面图像失败: HTTP {response.status_code}")
+                except requests.exceptions.RequestException as e:
+                    raise Exception(f"请求封面图像失败: {str(e)}")
             else:
-                # 使用默认封面
-                self.cover_label.setText("🎵")
-                self.cover_label.setStyleSheet("background-color: #EEEEEE; border-radius: 5px; font-size: 64px;")
-                
+                # 处理本地文件路径
+                if os.path.exists(url):
+                    image = Image.open(url)
+                else:
+                    raise Exception(f"封面图像文件不存在: {url}")
+            
+            # 调整大小
+            image = image.resize((150, 150))
+            
+            # 转换为QPixmap
+            qimage = ImageQt.ImageQt(image)
+            pixmap = QPixmap.fromImage(qimage)
+            
+            # 设置到标签
+            self.cover_label.setPixmap(pixmap)
+            self.cover_label.setStyleSheet("border-radius: 5px;")
         except Exception as e:
             print(f"加载封面图像失败: {str(e)}")
             # 使用默认封面

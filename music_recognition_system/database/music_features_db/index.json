@@ -47,5 +47,12 @@
     "duration": 291.68063492063493,
     "feature_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\features\\a0e2eb3edb5b3d0523a707ccfa03dd17.pkl",
     "added_time": "2025-05-07 11:29:43"
+  },
+  "bf07f4161c19169775ca023774b0ea6c": {
+    "file_name": "db_add_1746689983.wav",
+    "file_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system\\backend\\src\\main\\python\\../../../temp\\db_add_1746689983.wav",
+    "duration": 291.68063492063493,
+    "feature_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\features\\bf07f4161c19169775ca023774b0ea6c.pkl",
+    "added_time": "2025-05-08 15:39:48"
   }
 }
