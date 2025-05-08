@@ -75,17 +75,33 @@ class MusicRecognitionApp(QMainWindow):
         main_layout = QVBoxLayout(central_widget)
         
         # 创建选项卡部件
-        tab_widget = QTabWidget()
-        tab_widget.setTabPosition(QTabWidget.TabPosition.North)
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setTabPosition(QTabWidget.TabPosition.North)
+        
+        # 初始化各选项卡实例并保存引用
+        self.recognition_tab = RecognitionTab(self)
+        self.feature_library_tab = FeatureLibraryTab()
+        self.library_tab = LibraryTab()
+        self.settings_tab = SettingsTab()
+        self.profile_tab = ProfileTab()
         
         # 添加选项卡
-        tab_widget.addTab(RecognitionTab(), "识别")
-        tab_widget.addTab(FeatureLibraryTab(), "特征库")
-        tab_widget.addTab(LibraryTab(), "音乐库")
-        tab_widget.addTab(SettingsTab(), "设置")
-        tab_widget.addTab(ProfileTab(), "我的")
+        self.tab_widget.addTab(self.recognition_tab, "识别")
+        self.tab_widget.addTab(self.feature_library_tab, "特征库")
+        self.tab_widget.addTab(self.library_tab, "音乐库")
+        self.tab_widget.addTab(self.settings_tab, "设置")
+        self.tab_widget.addTab(self.profile_tab, "我的")
         
-        main_layout.addWidget(tab_widget)
+        main_layout.addWidget(self.tab_widget)
+    
+    def switch_to_tab(self, tab_index):
+        """切换到指定的选项卡"""
+        if 0 <= tab_index < self.tab_widget.count():
+            self.tab_widget.setCurrentIndex(tab_index)
+    
+    def get_library_tab(self):
+        """获取音乐库选项卡实例"""
+        return self.library_tab
 
 def main():
     app = QApplication(sys.argv)

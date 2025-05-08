@@ -498,41 +498,43 @@ class RecognitionTab(QWidget):
         """设置结果页面"""
         layout = QVBoxLayout(page)
         
-        # 结果区域
+        # 结果标题
         result_title = QLabel("识别结果")
-        result_title.setStyleSheet("font-size: 18px; font-weight: bold; margin-bottom: 10px;")
+        result_title.setStyleSheet("font-size: 24px; font-weight: bold; margin-bottom: 20px;")
+        result_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        # 结果布局
+        # 结果内容布局
         result_layout = QHBoxLayout()
         
-        # 专辑封面
-        self.cover_label = QLabel()
+        # 封面图像标签
+        self.cover_label = QLabel("🎵")
         self.cover_label.setFixedSize(150, 150)
-        self.cover_label.setStyleSheet("background-color: #EEEEEE; border-radius: 5px;")
         self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.cover_label.setStyleSheet("background-color: #EEEEEE; border-radius: 5px; font-size: 64px;")
         
-        # 歌曲信息
+        # 文本信息布局
         info_layout = QVBoxLayout()
         
-        self.song_label = QLabel()
-        self.song_label.setStyleSheet("font-size: 18px; font-weight: bold;")
-        self.song_label.setWordWrap(True)
+        # 歌曲信息标签
+        self.song_label = QLabel("未识别")
+        self.song_label.setStyleSheet("font-size: 24px; font-weight: bold; margin-bottom: 5px;")
         
-        self.artist_label = QLabel()
-        self.artist_label.setStyleSheet("font-size: 16px;")
+        self.artist_label = QLabel("歌手: 未知")
+        self.artist_label.setStyleSheet("font-size: 16px; color: #333333; margin-bottom: 5px;")
         
-        self.album_label = QLabel()
-        self.album_label.setStyleSheet("font-size: 14px; color: #666666;")
+        self.album_label = QLabel("专辑: 未知")
+        self.album_label.setStyleSheet("font-size: 14px; color: #666666; margin-bottom: 5px;")
         
-        self.year_label = QLabel()
-        self.year_label.setStyleSheet("font-size: 14px; color: #666666;")
+        self.year_label = QLabel("发行年份: 未知")
+        self.year_label.setStyleSheet("font-size: 14px; color: #666666; margin-bottom: 5px;")
         
-        self.genre_label = QLabel()
-        self.genre_label.setStyleSheet("font-size: 14px; color: #666666;")
+        self.genre_label = QLabel("流派: 未知")
+        self.genre_label.setStyleSheet("font-size: 14px; color: #666666; margin-bottom: 5px;")
         
-        self.confidence_label = QLabel()
+        self.confidence_label = QLabel("置信度: 0%")
         self.confidence_label.setStyleSheet("font-size: 14px; color: #666666; margin-top: 10px;")
         
+        # 添加信息标签到布局
         info_layout.addWidget(self.song_label)
         info_layout.addWidget(self.artist_label)
         info_layout.addWidget(self.album_label)
@@ -541,18 +543,49 @@ class RecognitionTab(QWidget):
         info_layout.addWidget(self.confidence_label)
         info_layout.addStretch()
         
+        # 操作按钮
+        buttons_layout = QHBoxLayout()
+        
+        # 在歌曲库中搜索按钮
+        self.search_button = QPushButton("在歌曲库中搜索")
+        self.search_button.setFixedSize(150, 36)
+        self.search_button.setStyleSheet("""
+            QPushButton {
+                background-color: #1DB954;
+                color: #FFFFFF;
+                border-radius: 18px;
+                border: none;
+                padding: 5px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1ED760;
+            }
+            QPushButton:pressed {
+                background-color: #0A8C3C;
+            }
+        """)
+        self.search_button.clicked.connect(self.search_in_library)
+        buttons_layout.addWidget(self.search_button)
+        
+        # 自动搜索复选框
+        self.auto_search_enabled = False  # 默认关闭自动搜索
+        
+        # 添加到信息布局
+        info_layout.addLayout(buttons_layout)
+        
+        # 将封面和信息添加到结果布局
         result_layout.addWidget(self.cover_label)
-        result_layout.addSpacing(15)
         result_layout.addLayout(info_layout)
         
-        # 音乐播放器
+        # 创建音乐播放器部件
         self.player_widget = MusicPlayerWidget()
         
-        # 返回按钮 - 返回到上传界面
-        self.back_button = QPushButton("返回上传")
+        # 返回按钮
+        self.back_button = QPushButton("返回")
         self.back_button.setStyleSheet("""
             QPushButton {
-                background-color: #E0E0E0;
+                background-color: #EEEEEE;
                 color: #333333;
                 border-radius: 18px;
                 padding: 8px 15px;
@@ -649,8 +682,11 @@ class RecognitionTab(QWidget):
         
         if result["success"]:
             # 更新界面信息
-            self.song_label.setText(result["song_name"])
-            self.artist_label.setText(f"歌手: {result['artist']}")
+            song_name = result["song_name"]
+            artist_name = result["artist"]
+            
+            self.song_label.setText(song_name)
+            self.artist_label.setText(f"歌手: {artist_name}")
             
             # 专辑信息处理
             album = result.get("album", "")
@@ -663,7 +699,7 @@ class RecognitionTab(QWidget):
                 self.album_label.setVisible(True)
             else:
                 # 尝试使用歌曲名作为专辑名
-                self.album_label.setText(f"专辑: {result['song_name']}")
+                self.album_label.setText(f"专辑: {song_name}")
                 self.album_label.setVisible(True)
             
             # 发行年份可能为空
@@ -706,6 +742,14 @@ class RecognitionTab(QWidget):
             
             # 延迟隐藏进度条
             QTimer.singleShot(1000, lambda: self.progress_bar.setVisible(False))
+            
+            # 保存识别结果信息，用于搜索按钮
+            self.current_song = song_name
+            self.current_artist = artist_name
+            
+            # 自动跳转到歌曲库并搜索（如果启用了自动搜索）
+            if hasattr(self, 'auto_search_enabled') and self.auto_search_enabled:
+                self.search_in_library()
     
     def handle_recognition_error(self, error_message):
         """处理识别错误"""
@@ -752,4 +796,21 @@ class RecognitionTab(QWidget):
             print(f"加载封面图像失败: {str(e)}")
             # 使用默认封面
             self.cover_label.setText("🎵")
-            self.cover_label.setStyleSheet("background-color: #EEEEEE; border-radius: 5px; font-size: 64px;") 
+            self.cover_label.setStyleSheet("background-color: #EEEEEE; border-radius: 5px; font-size: 64px;")
+    
+    def search_in_library(self):
+        """在歌曲库中搜索当前识别的歌曲"""
+        if hasattr(self, 'current_song') and self.current_song:
+            # 获取主窗口
+            main_window = self.parent()
+            while main_window and not hasattr(main_window, 'get_library_tab'):
+                main_window = main_window.parent()
+            
+            # 如果找到主窗口，获取歌曲库选项卡并执行搜索
+            if main_window and hasattr(main_window, 'get_library_tab'):
+                library_tab = main_window.get_library_tab()
+                if library_tab:
+                    # 切换到歌曲库选项卡
+                    main_window.switch_to_tab(2)  # 索引2对应歌曲库选项卡
+                    # 执行搜索
+                    library_tab.search_music(self.current_song, self.current_artist) 

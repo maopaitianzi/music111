@@ -40,7 +40,7 @@ def start_desktop_app():
             text=True,
             creationflags=subprocess.CREATE_NEW_CONSOLE
         )
-        print(f"桌面应用已启动，PID: {process.pid}")
+        print(f"桌面应用已启动 e:，PID: {process.pid}")
         return process
     except Exception as e:
         print(f"启动桌面应用失败: {str(e)}")
