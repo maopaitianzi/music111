@@ -1,27 +1,37 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
-                            QPushButton, QLabel, QFileDialog, QProgressBar, QSlider, QStackedWidget,
-                            QMessageBox, QFrame)
-from PyQt6.QtCore import Qt, QTimer, QUrl, QThread, pyqtSignal, QSize
-from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
-from PyQt6.QtGui import QFont, QPalette, QColor, QPixmap, QIcon
 import os
 import sys
+import io
 import time
 import requests
-import io
+import traceback
+from datetime import datetime
+from pathlib import Path
+from typing import Optional, Dict, Any
+
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
+    QProgressBar, QFileDialog, QStackedWidget, QFrame, QSlider,
+    QMessageBox, QStyleOption, QStyle, QSizePolicy
+)
+from PyQt6.QtCore import Qt, QUrl, QTimer, QThread, pyqtSignal, QSize
+from PyQt6.QtGui import QPixmap, QFont, QPalette, QColor, QPainter, QBrush
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+
+# 导入PIL用于图像处理
 from PIL import Image, ImageQt
 
-# 添加项目根目录到sys.path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(current_dir, "../../../.."))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
+# 引入服务
+from music_recognition_system.frontend.desktop_app.src.services.music_recognition_service import MusicRecognitionService
+from music_recognition_system.frontend.desktop_app.src.services.audio_recorder import AudioRecorder
 
-# 导入服务
-try:
-    from music_recognition_system.frontend.desktop_app.src.services import MusicRecognitionService, AudioRecorder
-except ImportError:
-    from services import MusicRecognitionService, AudioRecorder
+# 确保系统路径包含项目根目录，以便导入utils包
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(current_dir, "../../../../../"))
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
+# 现在可以从utils中导入音频特征相关类
+# 导入会在实际需要时执行
 
 class MusicRecognitionThread(QThread):
     """识别音乐的线程，避免UI卡顿"""
@@ -349,7 +359,7 @@ class RecognitionTab(QWidget):
         # 顶部标题
         title = QLabel("识别音乐")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-size: 24px; font-weight: bold; margin: 20px 0;")
+        title.setStyleSheet("font-size: 24px; font-weight: bold; margin: 20px 0; color: #1DB954;")
         
         # 创建堆叠小部件来存放不同页面
         self.stacked_widget = QStackedWidget()
@@ -496,43 +506,188 @@ class RecognitionTab(QWidget):
     
     def setup_result_page(self, page):
         """设置结果页面"""
+        # 使用网格布局替代垂直布局，提高自适应性
         layout = QVBoxLayout(page)
+        layout.setContentsMargins(10, 10, 10, 10)  # 减小外边距，增加可用空间
+        
+        # 使result_page支持背景图片显示
+        page.setAutoFillBackground(True)
+        page.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        
+        # 设置结果页面为透明面板，以便显示背景图片
+        panel = QFrame()
+        panel.setObjectName("result_panel")  # 设置对象名，方便样式表引用
+        panel.setStyleSheet("""
+            #result_panel {
+                background-color: rgba(255, 255, 255, 0.75);  /* 更透明的白色背景 */
+                border-radius: 15px;
+                border: 1px solid rgba(255, 255, 255, 0.9);
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            }
+            
+            /* 自适应小屏幕 */
+            @media (max-width: 800px) {
+                #result_panel {
+                    border-radius: 10px;
+                    margin: 10px;
+                }
+            }
+        """)
+        
+        # 使用网格布局代替垂直布局
+        panel_layout = QVBoxLayout(panel)
+        panel_layout.setContentsMargins(25, 25, 25, 25)  # 内边距
+        panel_layout.setSpacing(15)  # 组件之间的间距
         
         # 结果标题
         result_title = QLabel("识别结果")
-        result_title.setStyleSheet("font-size: 24px; font-weight: bold; margin-bottom: 20px;")
+        result_title.setObjectName("result_title")
+        result_title.setStyleSheet("""
+            #result_title {
+                font-size: 28px; 
+                font-weight: bold; 
+                color: #1DB954;
+                font-family: 'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
+                letter-spacing: 1px;
+            }
+            
+            /* 自适应小屏幕 */
+            @media (max-width: 800px) {
+                #result_title {
+                    font-size: 22px; 
+                }
+            }
+        """)
         result_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        result_title.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         
-        # 结果内容布局
+        # 结果内容布局 - 使用网格布局替代水平布局，增强自适应性
         result_layout = QHBoxLayout()
+        result_layout.setSpacing(25)  # 间距
+        result_layout.setStretch(1, 1)  # 让右侧信息区域占据更多空间
         
         # 封面图像标签
         self.cover_label = QLabel("🎵")
-        self.cover_label.setFixedSize(150, 150)
+        self.cover_label.setObjectName("cover_label")
+        # 使用最小尺寸而不是固定尺寸
+        self.cover_label.setMinimumSize(140, 140)  
+        self.cover_label.setMaximumSize(200, 200)  # 限制最大尺寸
+        self.cover_label.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
         self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.cover_label.setStyleSheet("background-color: #EEEEEE; border-radius: 5px; font-size: 64px;")
+        self.cover_label.setStyleSheet("""
+            #cover_label {
+                background-color: #EEEEEE; 
+                border-radius: 10px; 
+                font-size: 64px;
+                border: 2px solid #FFFFFF;
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            }
+            
+            /* 自适应小屏幕 */
+            @media (max-width: 800px) {
+                #cover_label {
+                    font-size: 48px;
+                    border-radius: 8px;
+                }
+            }
+        """)
         
         # 文本信息布局
         info_layout = QVBoxLayout()
+        info_layout.setSpacing(12)  # 增加文本间距
         
-        # 歌曲信息标签
+        # 歌曲信息标签 - 美化样式
         self.song_label = QLabel("未识别")
-        self.song_label.setStyleSheet("font-size: 24px; font-weight: bold; margin-bottom: 5px;")
+        self.song_label.setObjectName("song_label")
+        self.song_label.setWordWrap(True)  # 允许文本换行
+        self.song_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.song_label.setStyleSheet("""
+            #song_label {
+                font-size: 26px; 
+                font-weight: bold; 
+                color: #222222;
+                font-family: 'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
+            }
+            
+            /* 自适应小屏幕 */
+            @media (max-width: 800px) {
+                #song_label {
+                    font-size: 20px; 
+                }
+            }
+        """)
         
         self.artist_label = QLabel("歌手: 未知")
-        self.artist_label.setStyleSheet("font-size: 16px; color: #333333; margin-bottom: 5px;")
+        self.artist_label.setObjectName("artist_label")
+        self.artist_label.setWordWrap(True)  # 允许文本换行
+        self.artist_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.artist_label.setStyleSheet("""
+            #artist_label {
+                font-size: 18px; 
+                color: #333333; 
+                font-family: 'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
+                font-weight: 500;
+            }
+            
+            /* 自适应小屏幕 */
+            @media (max-width: 800px) {
+                #artist_label {
+                    font-size: 16px; 
+                }
+            }
+        """)
         
-        self.album_label = QLabel("专辑: 未知")
-        self.album_label.setStyleSheet("font-size: 14px; color: #666666; margin-bottom: 5px;")
+        self.album_label = QLabel("歌曲名: 未知")
+        self.album_label.setObjectName("album_label")
+        self.album_label.setWordWrap(True)
+        self.album_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.album_label.setStyleSheet("""
+            #album_label {
+                font-size: 16px; 
+                color: #444444; 
+                font-family: 'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
+            }
+        """)
         
         self.year_label = QLabel("发行年份: 未知")
-        self.year_label.setStyleSheet("font-size: 14px; color: #666666; margin-bottom: 5px;")
+        self.year_label.setObjectName("year_label")
+        self.year_label.setWordWrap(True)
+        self.year_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.year_label.setStyleSheet("""
+            #year_label {
+                font-size: 16px; 
+                color: #444444; 
+                font-family: 'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
+            }
+        """)
         
         self.genre_label = QLabel("流派: 未知")
-        self.genre_label.setStyleSheet("font-size: 14px; color: #666666; margin-bottom: 5px;")
+        self.genre_label.setObjectName("genre_label")
+        self.genre_label.setWordWrap(True)
+        self.genre_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.genre_label.setStyleSheet("""
+            #genre_label {
+                font-size: 16px; 
+                color: #444444; 
+                font-family: 'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
+            }
+        """)
         
         self.confidence_label = QLabel("置信度: 0%")
-        self.confidence_label.setStyleSheet("font-size: 14px; color: #666666; margin-top: 10px;")
+        self.confidence_label.setObjectName("confidence_label")
+        self.confidence_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.confidence_label.setStyleSheet("""
+            #confidence_label {
+                font-size: 16px; 
+                color: #1DB954; 
+                margin-top: 15px;
+                font-family: 'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
+                font-weight: bold;
+                border-radius: 10px;
+                padding: 3px 8px;
+                background-color: rgba(29, 185, 84, 0.1);
+            }
+        """)
         
         # 添加信息标签到布局
         info_layout.addWidget(self.song_label)
@@ -541,32 +696,47 @@ class RecognitionTab(QWidget):
         info_layout.addWidget(self.year_label)
         info_layout.addWidget(self.genre_label)
         info_layout.addWidget(self.confidence_label)
-        info_layout.addStretch()
+        info_layout.addStretch(1)  # 添加弹性空间
         
         # 操作按钮
         buttons_layout = QHBoxLayout()
+        buttons_layout.setContentsMargins(0, 10, 0, 0)  # 添加上边距
         
         # 在歌曲库中搜索按钮
         self.search_button = QPushButton("在歌曲库中搜索")
-        self.search_button.setFixedSize(150, 36)
+        self.search_button.setObjectName("search_button")
+        # 使用最小尺寸而不是固定尺寸
+        self.search_button.setMinimumSize(140, 40)
+        self.search_button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         self.search_button.setStyleSheet("""
-            QPushButton {
+            #search_button {
                 background-color: #1DB954;
                 color: #FFFFFF;
-                border-radius: 18px;
+                border-radius: 20px;
                 border: none;
-                padding: 5px;
+                padding: 5px 15px;
                 font-weight: bold;
+                font-size: 14px;
+                font-family: 'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
             }
-            QPushButton:hover {
+            #search_button:hover {
                 background-color: #1ED760;
             }
-            QPushButton:pressed {
+            #search_button:pressed {
                 background-color: #0A8C3C;
+            }
+            
+            /* 自适应小屏幕 */
+            @media (max-width: 800px) {
+                #search_button {
+                    font-size: 12px;
+                    padding: 3px 10px;
+                }
             }
         """)
         self.search_button.clicked.connect(self.search_in_library)
         buttons_layout.addWidget(self.search_button)
+        buttons_layout.addStretch(1)  # 添加弹性空间
         
         # 自动搜索复选框
         self.auto_search_enabled = False  # 默认关闭自动搜索
@@ -576,33 +746,49 @@ class RecognitionTab(QWidget):
         
         # 将封面和信息添加到结果布局
         result_layout.addWidget(self.cover_label)
-        result_layout.addLayout(info_layout)
+        result_layout.addLayout(info_layout, 1)  # 为信息布局添加伸缩因子
         
         # 创建音乐播放器部件
         self.player_widget = MusicPlayerWidget()
+        self.player_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         
         # 返回按钮
         self.back_button = QPushButton("返回")
+        self.back_button.setObjectName("back_button")
+        self.back_button.setMinimumSize(90, 36)
+        self.back_button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         self.back_button.setStyleSheet("""
-            QPushButton {
+            #back_button {
                 background-color: #EEEEEE;
                 color: #333333;
                 border-radius: 18px;
                 padding: 8px 15px;
                 font-weight: bold;
-                max-width: 120px;
+                font-size: 14px;
+                font-family: 'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
             }
-            QPushButton:hover {
+            #back_button:hover {
                 background-color: #D0D0D0;
+            }
+            
+            /* 自适应小屏幕 */
+            @media (max-width: 800px) {
+                #back_button {
+                    font-size: 12px;
+                    padding: 5px 10px;
+                }
             }
         """)
         self.back_button.clicked.connect(self.show_upload_page)
         
-        # 添加组件到结果页面
-        layout.addWidget(result_title)
-        layout.addLayout(result_layout)
-        layout.addWidget(self.player_widget)
-        layout.addWidget(self.back_button, alignment=Qt.AlignmentFlag.AlignLeft)
+        # 添加组件到面板布局
+        panel_layout.addWidget(result_title)
+        panel_layout.addLayout(result_layout, 1)  # 添加伸缩因子
+        panel_layout.addWidget(self.player_widget)
+        panel_layout.addWidget(self.back_button, alignment=Qt.AlignmentFlag.AlignLeft)
+        
+        # 将面板添加到结果页面
+        layout.addWidget(panel, 1)  # 添加伸缩因子
     
     def setup_recording_page(self, page):
         """设置录音页面"""
@@ -681,28 +867,66 @@ class RecognitionTab(QWidget):
         self.timer.stop()
         
         if result["success"]:
-            # 更新界面信息
-            song_name = result["song_name"]
+            # 获取识别结果中的文件名或歌曲名
+            original_song_name = result["song_name"]
             # 优先使用识别结果中的艺术家信息
             artist_name = result["artist"]
+            cover_path = ""  # 初始化封面路径变量
+            
+            # 尝试从特征库中获取更详细的歌曲信息
+            try:
+                # 获取特征库路径
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                workspace_root = os.path.abspath(os.path.join(current_dir, "../../../../../"))
+                database_path = os.path.join(workspace_root, "music_recognition_system/database/music_features_db")
+                
+                from music_recognition_system.utils.audio_features import FeatureDatabase
+                db = FeatureDatabase(database_path)
+                all_files = db.get_all_files()
+                
+                # 尝试根据文件名或歌曲名查找匹配项
+                matched_file = None
+                for file_info in all_files:
+                    # 检查文件名或ID是否匹配
+                    if (os.path.basename(file_info["file_path"]) == os.path.basename(result["file_path"]) or
+                        file_info["id"] == original_song_name or 
+                        file_info["file_name"] == original_song_name):
+                        matched_file = file_info
+                        break
+                
+                # 如果找到匹配项且有歌曲名
+                if matched_file:
+                    # 更新歌曲名
+                    if matched_file.get("song_name"):
+                        song_name = matched_file["song_name"]
+                    else:
+                        song_name = original_song_name
+                        
+                    # 如果特征库中有艺术家信息，也更新
+                    if matched_file.get("author"):
+                        artist_name = matched_file["author"]
+                    
+                    # 获取封面路径
+                    if matched_file.get("cover_path") and os.path.exists(matched_file["cover_path"]):
+                        cover_path = matched_file["cover_path"]
+                        print(f"从特征库加载封面图片: {cover_path}")
+                    
+                    print(f"从特征库更新歌曲信息: {song_name} - {artist_name}")
+                else:
+                    song_name = original_song_name
+                    print(f"无法从特征库获取歌曲信息，使用原始结果: {song_name}")
+            except Exception as e:
+                # 如果出现错误，使用原始识别结果
+                song_name = original_song_name
+                print(f"获取特征库歌曲信息出错: {str(e)}，使用原始结果: {song_name}")
             
             self.song_label.setText(song_name)
             # 确保显示歌手信息
             self.artist_label.setText(f"歌手: {artist_name}")
             
-            # 专辑信息处理
-            album = result.get("album", "")
-            if album and album != "未知专辑":
-                # 如果专辑名不以"专辑:"开头，添加前缀
-                if not album.startswith("专辑:"):
-                    self.album_label.setText(f"专辑: {album}")
-                else:
-                    self.album_label.setText(album)
-                self.album_label.setVisible(True)
-            else:
-                # 尝试使用歌曲名作为专辑名
-                self.album_label.setText(f"专辑: {song_name}")
-                self.album_label.setVisible(True)
+            # 专辑标签改为显示歌曲名
+            self.album_label.setText(f"歌曲名: {song_name}")
+            self.album_label.setVisible(True)
             
             # 发行年份可能为空
             if "release_year" in result and result["release_year"]:
@@ -722,22 +946,50 @@ class RecognitionTab(QWidget):
             
             # 显示置信度
             confidence = result.get('confidence', 0) * 100
-            self.confidence_label.setText(f"置信度: {confidence:.1f}%")
             
-            # 标记是否为本地识别结果
+            # 标记是否为本地识别结果并优化显示样式
             if result.get("is_local_recognition", False):
                 self.confidence_label.setText(f"置信度: {confidence:.1f}% (本地识别)")
-                self.confidence_label.setStyleSheet("font-size: 14px; color: #FF6B6B; margin-top: 10px;")
+                self.confidence_label.setStyleSheet("""
+                    font-size: 16px; 
+                    color: #FF6B6B; 
+                    margin-top: 15px;
+                    font-family: 'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
+                    font-weight: bold;
+                    border-radius: 10px;
+                    padding: 3px 8px;
+                    background-color: rgba(255, 107, 107, 0.1);
+                """)
             else:
-                self.confidence_label.setStyleSheet("font-size: 14px; color: #666666; margin-top: 10px;")
+                self.confidence_label.setText(f"置信度: {confidence:.1f}%")
+                self.confidence_label.setStyleSheet("""
+                    font-size: 16px; 
+                    color: #1DB954; 
+                    margin-top: 15px;
+                    font-family: 'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
+                    font-weight: bold;
+                    border-radius: 10px;
+                    padding: 3px 8px;
+                    background-color: rgba(29, 185, 84, 0.1);
+                """)
             
             # 加载封面图像
-            if "cover_url" in result and result["cover_url"]:
+            # 优先使用特征库中的封面
+            if cover_path:
+                self.load_cover_image(cover_path)
+            # 如果特征库没有封面，尝试使用API返回的封面URL
+            elif "cover_url" in result and result["cover_url"]:
                 self.load_cover_image(result["cover_url"])
             else:
                 # 使用默认封面
                 self.cover_label.setText("🎵")
-                self.cover_label.setStyleSheet("background-color: #EEEEEE; border-radius: 5px; font-size: 64px;")
+                self.cover_label.setStyleSheet("""
+                    background-color: #EEEEEE; 
+                    border-radius: 10px; 
+                    font-size: 64px;
+                    border: 2px solid #FFFFFF;
+                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+                """)
             
             # 切换到结果页面
             self.show_result_page()
@@ -763,7 +1015,7 @@ class RecognitionTab(QWidget):
         QMessageBox.critical(self, "识别错误", error_message)
     
     def load_cover_image(self, url):
-        """加载封面图像"""
+        """加载封面图像并设置背景"""
         try:
             if url.startswith("http://") or url.startswith("https://"):
                 # 获取网络图像
@@ -784,21 +1036,51 @@ class RecognitionTab(QWidget):
                 else:
                     raise Exception(f"封面图像文件不存在: {url}")
             
-            # 调整大小
-            image = image.resize((150, 150))
+            # 创建一个副本用于封面显示
+            cover_image = image.copy()
+            
+            # 调整封面大小
+            cover_image = cover_image.resize((150, 150))
             
             # 转换为QPixmap
-            qimage = ImageQt.ImageQt(image)
+            qimage = ImageQt.ImageQt(cover_image)
             pixmap = QPixmap.fromImage(qimage)
             
             # 设置到标签
             self.cover_label.setPixmap(pixmap)
             self.cover_label.setStyleSheet("border-radius: 5px;")
+            
+            # 设置背景图片
+            # 创建一个更大更模糊的版本用于背景
+            bg_image = image.copy()
+            # 调整尺寸，确保足够大以覆盖整个页面
+            bg_image = bg_image.resize((1200, 800))
+            # 应用模糊效果增强可读性
+            from PIL import ImageFilter
+            bg_image = bg_image.filter(ImageFilter.GaussianBlur(radius=10))
+            
+            # 将PIL图像转换为QPixmap
+            bg_qimage = ImageQt.ImageQt(bg_image)
+            bg_pixmap = QPixmap.fromImage(bg_qimage)
+            
+            # 创建调色板并设置背景
+            palette = self.result_page.palette()
+            palette.setBrush(QPalette.ColorGroup.Active, QPalette.ColorRole.Window, 
+                            QBrush(bg_pixmap))
+            palette.setBrush(QPalette.ColorGroup.Inactive, QPalette.ColorRole.Window, 
+                            QBrush(bg_pixmap))
+            self.result_page.setPalette(palette)
+            
+            print(f"成功设置背景图片: {url}")
+            
         except Exception as e:
             print(f"加载封面图像失败: {str(e)}")
             # 使用默认封面
             self.cover_label.setText("🎵")
             self.cover_label.setStyleSheet("background-color: #EEEEEE; border-radius: 5px; font-size: 64px;")
+            
+            # 重置背景为默认
+            self.result_page.setStyleSheet("background-color: #FFFFFF;")  # 白色背景
     
     def search_in_library(self):
         """在歌曲库中搜索当前识别的歌曲"""

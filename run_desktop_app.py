@@ -46,8 +46,66 @@ def start_desktop_app():
         print(f"启动桌面应用失败: {str(e)}")
         return None
 
+def refresh_feature_database():
+    """刷新特征库数据，确保歌曲名和作者信息正确显示"""
+    print("正在刷新特征库数据结构...")
+    
+    try:
+        # 获取特征库路径
+        workspace_root = os.getcwd()
+        database_path = os.path.join(workspace_root, "music_recognition_system/database/music_features_db")
+        
+        # 验证数据库目录是否存在
+        if not os.path.exists(database_path):
+            print(f"特征库目录不存在: {database_path}")
+            return False
+            
+        # 检查索引文件
+        index_path = os.path.join(database_path, "index.json")
+        if not os.path.exists(index_path):
+            print(f"特征库索引文件不存在: {index_path}")
+            return False
+            
+        # 尝试加载和更新索引
+        try:
+            import json
+            with open(index_path, 'r', encoding='utf-8') as f:
+                feature_index = json.load(f)
+                
+            # 检查并添加缺失的字段
+            updated = False
+            for file_id, info in feature_index.items():
+                if "song_name" not in info:
+                    info["song_name"] = ""
+                    updated = True
+                if "author" not in info:
+                    info["author"] = ""
+                    updated = True
+                if "cover_path" not in info:
+                    info["cover_path"] = ""
+                    updated = True
+            
+            # 如果有更新，保存回文件
+            if updated:
+                with open(index_path, 'w', encoding='utf-8') as f:
+                    json.dump(feature_index, f, ensure_ascii=False, indent=2)
+                print("特征库索引已更新")
+            else:
+                print("特征库索引已是最新格式")
+                
+            return True
+        except Exception as e:
+            print(f"更新特征库索引失败: {str(e)}")
+            return False
+    except Exception as e:
+        print(f"刷新特征库失败: {str(e)}")
+        return False
+
 def main():
     """主函数"""
+    # 刷新特征库数据
+    refresh_feature_database()
+    
     # 启动后端API
     api_process = start_backend_api()
     if not api_process:

@@ -31,6 +31,7 @@ class LibraryTab(QWidget):
                 border-radius: 15px;
                 padding: 5px 10px;
                 background: #FFFFFF;
+                color: #000000;
                 min-width: 250px;
                 height: 30px;
             }

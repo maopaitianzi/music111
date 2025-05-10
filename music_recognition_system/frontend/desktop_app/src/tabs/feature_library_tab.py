@@ -3,13 +3,17 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                             QMessageBox, QLineEdit, QComboBox, QTableWidget, QTableWidgetItem, 
                             QHeaderView, QAbstractItemView, QTabWidget, QMenu, QDialog, QFormLayout,
                             QDialogButtonBox, QCheckBox, QSplitter)
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QDir, QTimer
-from PyQt6.QtGui import QFont, QPalette, QColor, QAction, QCursor
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QDir, QTimer, QSize
+from PyQt6.QtGui import QFont, QPalette, QColor, QAction, QCursor, QPixmap, QImage, QPainter, QPen, QIcon
 import os
 import sys
 import time
 import traceback
 import json
+import shutil
+from datetime import datetime
+import hashlib
+from PyQt6.QtWidgets import QApplication
 
 # 将项目根目录添加到sys.path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -117,8 +121,6 @@ except ImportError as e:
             return False
             
         def _generate_file_id(self, file_name):
-            import hashlib
-            # 简单地使用文件名的哈希作为ID
             return hashlib.md5(file_name.encode('utf-8')).hexdigest()
             
         @property
@@ -133,7 +135,7 @@ class FeatureExtractionThread(QThread):
     file_processed = pyqtSignal(str, bool)  # 处理完成的文件名，是否成功
     extraction_completed = pyqtSignal(bool, str, int)  # 是否成功，消息，成功提取的数量
     
-    def __init__(self, folder_path, database_path=None, use_filename=False, default_author=""):
+    def __init__(self, folder_path, database_path=None, use_filename=False, default_author="", auto_find_cover=True, cover_format="", save_cover_image=None):
         super().__init__()
         self.folder_path = folder_path
         self.database_path = database_path
@@ -147,6 +149,9 @@ class FeatureExtractionThread(QThread):
             self.db = None
         self.use_filename = use_filename
         self.default_author = default_author
+        self.auto_find_cover = auto_find_cover
+        self.cover_format = cover_format
+        self.save_cover_image = save_cover_image
         
     def run(self):
         try:
@@ -200,81 +205,137 @@ class FeatureExtractionThread(QThread):
                     # 提取特征
                     features = self.extractor.extract_features(audio_file)
                     
-                    # 如果提取失败，处理错误
+                    # 检查提取是否成功
                     if "error" in features:
                         self.file_processed.emit(os.path.basename(audio_file), False)
-                        errors.append(f"特征提取失败 ({os.path.basename(audio_file)}): {features['error']}")
+                        errors.append(f"提取特征失败: {features['error']}")
                         error_count += 1
                         continue
                     
-                    # 添加歌曲信息
+                    # 添加歌曲名
                     if self.use_filename:
-                        # 使用文件名（不含扩展名）作为歌曲名
+                        # 使用文件名作为歌曲名（去除扩展名）
                         base_name = os.path.basename(audio_file)
                         song_name = os.path.splitext(base_name)[0]
                         features["song_name"] = song_name
                     
-                    # 设置默认作者
-                    features["author"] = self.default_author
+                    # 添加作者
+                    if self.default_author:
+                        features["author"] = self.default_author
                     
                     # 添加时间戳
-                    from datetime import datetime
                     features["added_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     
-                    # 添加到数据库
-                    try:
-                        success = self.db.add_feature(features)
-                        if success:
-                            success_count += 1
-                            self.file_processed.emit(os.path.basename(audio_file), True)
-                        else:
-                            self.file_processed.emit(os.path.basename(audio_file), False)
-                            errors.append(f"无法添加到数据库: {os.path.basename(audio_file)}")
-                            error_count += 1
-                    except Exception as e:
-                        self.file_processed.emit(os.path.basename(audio_file), False)
-                        errors.append(f"添加到数据库时出错 ({os.path.basename(audio_file)}): {str(e)}")
-                        error_count += 1
-                        print(f"添加到数据库时出错: {str(e)}")
-                        print(f"Stack trace: {traceback.format_exc()}")
+                    # 如果启用了自动查找封面
+                    if self.auto_find_cover and self.save_cover_image:
+                        # 获取文件ID以供保存封面
+                        file_id = self.db._generate_file_id(features["file_name"])
                         
+                        # 查找封面图片
+                        cover_path = self._find_cover_image(audio_file)
+                        
+                        # 如果找到封面，保存并添加到特征
+                        if cover_path:
+                            saved_cover = self.save_cover_image(cover_path, file_id)
+                            if saved_cover:
+                                features["cover_path"] = saved_cover
+                    
+                    # 添加到数据库
+                    if self.db.add_feature(features):
+                        self.file_processed.emit(os.path.basename(audio_file), True)
+                        success_count += 1
+                    else:
+                        self.file_processed.emit(os.path.basename(audio_file), False)
+                        errors.append(f"添加到数据库失败: {os.path.basename(audio_file)}")
+                        error_count += 1
+                    
+                    # 更新进度
+                    self.progress_updated.emit(i + 1, total_files)
+                    
                 except Exception as e:
+                    error_msg = str(e)
                     self.file_processed.emit(os.path.basename(audio_file), False)
-                    errors.append(f"处理文件出错 ({os.path.basename(audio_file)}): {str(e)}")
+                    errors.append(f"{os.path.basename(audio_file)}: {error_msg}")
                     error_count += 1
-                    print(f"处理文件出错: {str(e)}")
+                    print(f"处理文件 {audio_file} 失败: {error_msg}")
                     print(f"Stack trace: {traceback.format_exc()}")
-                
-                # 更新进度
-                self.progress_updated.emit(i + 1, total_files)
             
-            # 输出错误日志用于调试
-            if errors:
-                print(f"特征提取过程中出现 {len(errors)} 个错误:")
-                for i, error in enumerate(errors):
-                    print(f"{i+1}. {error}")
-            
-            # 发送完成信号
+            # 完成处理
             if success_count > 0:
-                self.extraction_completed.emit(
-                    True, 
-                    f"成功提取 {success_count}/{total_files} 个音频文件的特征" + 
-                    (f" (失败: {error_count})" if error_count > 0 else ""),
-                    success_count
-                )
+                message = f"成功处理了 {success_count} 个文件，失败 {error_count} 个"
+                self.extraction_completed.emit(True, message, success_count)
             else:
-                error_msg = "未能成功提取任何特征"
-                if errors and len(errors) <= 3:
-                    error_msg += "。错误: " + "; ".join(errors)
-                elif errors:
-                    error_msg += f"。出现多个错误 ({len(errors)} 个)"
-                self.extraction_completed.emit(False, error_msg, 0)
+                errors_str = "\n".join(errors[:5])
+                if len(errors) > 5:
+                    errors_str += f"\n...共有 {len(errors)} 个错误"
+                message = f"没有成功处理任何文件。错误信息:\n{errors_str}"
+                self.extraction_completed.emit(False, message, 0)
             
         except Exception as e:
-            error_msg = f"特征提取过程中出错: {str(e)}"
-            print(error_msg)
+            error_msg = str(e)
+            print(f"特征提取线程出错: {error_msg}")
             print(f"Stack trace: {traceback.format_exc()}")
-            self.extraction_completed.emit(False, error_msg, 0)
+            self.extraction_completed.emit(False, f"处理过程中出现未预期的错误: {error_msg}", 0)
+
+    def _find_cover_image(self, audio_file):
+        """
+        根据设置的策略查找音频文件的封面图片
+        
+        Args:
+            audio_file: 音频文件的完整路径
+            
+        Returns:
+            找到的封面图片路径，如果没找到则返回None
+        """
+        try:
+            file_dir = os.path.dirname(audio_file)
+            file_name = os.path.basename(audio_file)
+            file_base, _ = os.path.splitext(file_name)
+            
+            # 图片文件扩展名
+            img_exts = ['.jpg', '.jpeg', '.png', '.bmp', '.gif']
+            
+            # 根据不同的封面查找策略
+            if self.cover_format == "同名图片":
+                # 尝试查找与音频文件同名的图片
+                for ext in img_exts:
+                    img_path = os.path.join(file_dir, file_base + ext)
+                    if os.path.exists(img_path):
+                        print(f"找到同名封面: {img_path}")
+                        return img_path
+                        
+            elif self.cover_format == "cover.jpg":
+                # 尝试查找目录中的cover.jpg
+                cover_names = ["cover.jpg", "cover.jpeg", "cover.png"]
+                for name in cover_names:
+                    img_path = os.path.join(file_dir, name)
+                    if os.path.exists(img_path):
+                        print(f"找到封面文件: {img_path}")
+                        return img_path
+                        
+            elif self.cover_format == "folder.jpg":
+                # 尝试查找目录中的folder.jpg
+                folder_names = ["folder.jpg", "folder.jpeg", "folder.png", "front.jpg", "front.jpeg", "front.png"]
+                for name in folder_names:
+                    img_path = os.path.join(file_dir, name)
+                    if os.path.exists(img_path):
+                        print(f"找到文件夹封面: {img_path}")
+                        return img_path
+                        
+            elif self.cover_format == "同目录所有图片":
+                # 查找同目录下的任意图片文件，使用第一个
+                for f in os.listdir(file_dir):
+                    f_lower = f.lower()
+                    if any(f_lower.endswith(ext) for ext in img_exts):
+                        img_path = os.path.join(file_dir, f)
+                        print(f"找到目录中的图片: {img_path}")
+                        return img_path
+            
+            # 没找到封面
+            return None
+        except Exception as e:
+            print(f"查找封面图片失败: {str(e)}")
+            return None
 
 class FeatureLibraryTab(QWidget):
     """特征库创建选项卡"""
@@ -291,6 +352,10 @@ class FeatureLibraryTab(QWidget):
         os.makedirs(self.database_path, exist_ok=True)
         
         self.db = FeatureDatabase(self.database_path)
+        
+        # 创建默认封面图标
+        self.default_cover = self._create_default_cover()
+        
         self.setup_ui()
         self.load_existing_features()
         
@@ -382,23 +447,74 @@ class FeatureLibraryTab(QWidget):
         """)
         refresh_button.clicked.connect(self.refresh_feature_list)
         
+        # 添加元数据迁移按钮
+        migrate_button = QPushButton("更新元数据")
+        migrate_button.setStyleSheet("""
+            QPushButton {
+                background-color: #FF9500;
+                color: #FFFFFF;
+                border-radius: 5px;
+                border: none;
+                padding: 5px 10px;
+            }
+            QPushButton:hover {
+                background-color: #FFA530;
+            }
+            QPushButton:pressed {
+                background-color: #E08500;
+            }
+        """)
+        migrate_button.setToolTip("手动更新歌曲名和作者信息")
+        migrate_button.clicked.connect(self._migrate_and_refresh)
+        
+        # 添加批量删除按钮
+        batch_delete_button = QPushButton("批量删除")
+        batch_delete_button.setStyleSheet("""
+            QPushButton {
+                background-color: #E74C3C;
+                color: #FFFFFF;
+                border-radius: 5px;
+                border: none;
+                padding: 5px 10px;
+            }
+            QPushButton:hover {
+                background-color: #F75C4C;
+            }
+            QPushButton:pressed {
+                background-color: #D73C2C;
+            }
+        """)
+        batch_delete_button.setToolTip("删除选中的特征条目")
+        batch_delete_button.clicked.connect(self.batch_delete_features)
+        
         filter_layout.addWidget(search_label)
         filter_layout.addWidget(self.search_input, 3)
         filter_layout.addWidget(sort_label)
         filter_layout.addWidget(self.sort_combo, 1)
         filter_layout.addWidget(add_button)
         filter_layout.addWidget(refresh_button)
+        filter_layout.addWidget(migrate_button)
+        filter_layout.addWidget(batch_delete_button)
         
         # 特征列表表格
         self.feature_table = QTableWidget()
-        self.feature_table.setColumnCount(6)
-        self.feature_table.setHorizontalHeaderLabels(["ID", "文件名", "歌曲名", "作者", "文件路径", "时长(秒)", "添加时间"])
+        self.feature_table.setColumnCount(8)
+        self.feature_table.setHorizontalHeaderLabels(["ID", "封面", "文件名", "歌曲名", "作者", "文件路径", "时长(秒)", "添加时间"])
         self.feature_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.feature_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.feature_table.verticalHeader().setVisible(False)
-        self.feature_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        self.feature_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
         self.feature_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.feature_table.customContextMenuRequested.connect(self.show_context_menu)
+        
+        # 设置图标大小 - 足够大以显示封面
+        self.feature_table.setIconSize(QSize(60, 60))
+        
+        # 设置行高以适应图标大小
+        self.feature_table.verticalHeader().setDefaultSectionSize(65)
+        
+        # 启用多选
+        self.feature_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         
         # 将组件添加到布局
         layout.addLayout(header_layout)
@@ -493,6 +609,23 @@ class FeatureLibraryTab(QWidget):
         options_layout.addLayout(author_layout)
         options_layout.addStretch()
         
+        # 添加自动查找封面选项
+        cover_options_layout = QHBoxLayout()
+        
+        self.auto_cover_checkbox = QCheckBox("自动查找封面图片")
+        self.auto_cover_checkbox.setChecked(True)
+        self.auto_cover_checkbox.setToolTip("查找与音频文件同名的图片文件(.jpg/.jpeg/.png)作为封面")
+        
+        cover_label = QLabel("封面搜索格式:")
+        self.cover_format_combo = QComboBox()
+        self.cover_format_combo.addItems(["同名图片", "cover.jpg", "folder.jpg", "同目录所有图片"])
+        self.cover_format_combo.setToolTip("指定自动查找封面的方式")
+        
+        cover_options_layout.addWidget(self.auto_cover_checkbox)
+        cover_options_layout.addWidget(cover_label)
+        cover_options_layout.addWidget(self.cover_format_combo)
+        cover_options_layout.addStretch()
+        
         # 进度条
         self.progress_layout = QVBoxLayout()
         
@@ -500,54 +633,43 @@ class FeatureLibraryTab(QWidget):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.progress_bar.setTextVisible(True)
-        self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid #CCCCCC;
-                border-radius: 3px;
-                text-align: center;
-                height: 25px;
-            }
-            QProgressBar::chunk {
-                background-color: #1DB954;
-            }
-        """)
+        self.progress_bar.setFormat("%p% (%v/%m)")
         
-        self.status_label = QLabel("准备就绪")
+        self.status_label = QLabel("准备就绪，请选择文件夹")
         self.status_label.setStyleSheet("color: #666666; margin: 5px 0;")
         
         self.progress_layout.addWidget(self.progress_bar)
         self.progress_layout.addWidget(self.status_label)
         
         # 处理文件列表
-        self.file_list_label = QLabel("处理文件:")
-        self.file_list_label.setStyleSheet("font-weight: bold; margin-top: 5px;")
-        
         self.file_list = QListWidget()
+        self.file_list.setAlternatingRowColors(True)
         self.file_list.setStyleSheet("""
             QListWidget {
                 border: 1px solid #CCCCCC;
-                border-radius: 3px;
+                border-radius: 5px;
                 padding: 5px;
+                background-color: #FFFFFF;
             }
-            QListWidget::item {
-                padding: 5px;
-                border-bottom: 1px solid #EEEEEE;
+            QListWidget::item:alternate {
+                background-color: #F9F9F9;
             }
         """)
         
-        # 添加组件到主布局
+        # 绑定事件
+        self.select_folder_button.clicked.connect(self.select_folder)
+        self.start_button.clicked.connect(self.start_extraction)
+        
+        # 添加所有组件到主布局
         layout.addWidget(title)
         layout.addWidget(description)
         layout.addLayout(button_layout)
         layout.addWidget(self.folder_label)
-        layout.addLayout(options_layout)  # 新增的选项布局
+        layout.addLayout(options_layout)
+        layout.addLayout(cover_options_layout)
         layout.addLayout(self.progress_layout)
-        layout.addWidget(self.file_list_label)
+        layout.addWidget(QLabel("处理结果:"))
         layout.addWidget(self.file_list)
-        
-        # 连接信号
-        self.select_folder_button.clicked.connect(self.select_folder)
-        self.start_button.clicked.connect(self.start_extraction)
         
         # 初始化变量
         self.selected_folder = ""
@@ -582,6 +704,9 @@ class FeatureLibraryTab(QWidget):
     def refresh_feature_list(self):
         """刷新特征列表显示"""
         try:
+            # 迁移旧数据
+            self._migrate_old_features()
+            
             # 获取所有特征文件
             files = self.db.get_all_files()
             self.current_features = files
@@ -596,15 +721,136 @@ class FeatureLibraryTab(QWidget):
             print(f"刷新特征列表失败: {str(e)}")
             traceback.print_exc()
     
+    def _migrate_old_features(self):
+        """迁移旧特征数据，添加歌曲名和作者信息"""
+        try:
+            # 确保数据库已正确加载
+            if not hasattr(self.db, 'feature_index') or not self.db.feature_index:
+                print("数据库未正确加载或为空，无需迁移")
+                return
+
+            # 调试输出
+            print(f"当前数据库包含 {len(self.db.feature_index)} 条记录")
+            first_item = next(iter(self.db.feature_index.items())) if self.db.feature_index else None
+            if first_item:
+                file_id, info = first_item
+                print(f"示例记录: ID={file_id}, 信息={info}")
+                print(f"字段: {', '.join(info.keys())}")
+            
+            # 检查是否有需要迁移的数据
+            need_migration = False
+            for file_id, info in self.db.feature_index.items():
+                if "song_name" not in info or "author" not in info or not info["song_name"]:
+                    need_migration = True
+                    print(f"找到需要迁移的记录: {file_id}")
+                    break
+            
+            if not need_migration:
+                print("没有需要迁移的记录")
+                return
+                
+            print("检测到旧特征数据，开始迁移...")
+            
+            # 统计
+            total_count = len(self.db.feature_index)
+            migrated_count = 0
+            
+            # 遍历所有特征数据
+            for file_id, info in list(self.db.feature_index.items()):
+                try:
+                    # 检查是否需要迁移
+                    if "song_name" not in info or "author" not in info or not info["song_name"]:
+                        # 获取文件路径
+                        file_path = info.get("file_path", "")
+                        
+                        if file_path and os.path.exists(file_path):
+                            # 从文件名中提取歌曲名
+                            file_name = info.get("file_name", "")
+                            song_name = os.path.splitext(file_name)[0] if file_name else ""
+                            
+                            # 使用提取器获取元数据
+                            try:
+                                extractor = AudioFeatureExtractor()
+                                metadata = extractor._extract_metadata(file_path)
+                                if metadata and metadata.get("title"):
+                                    song_name = metadata.get("title", "")
+                                author = metadata.get("artist", "")
+                            except:
+                                author = ""
+                            
+                            # 更新特征数据
+                            update_info = {
+                                "song_name": song_name,
+                                "author": author,
+                                "update_feature": True
+                            }
+                            
+                            if self.db.update_feature_info(file_id, update_info):
+                                migrated_count += 1
+                                print(f"已迁移 {file_id}: {song_name} - {author}")
+                                
+                                # 尝试查找并添加封面
+                                if file_path and os.path.exists(file_path):
+                                    try:
+                                        # 尝试在音频文件所在目录查找同名图片
+                                        file_dir = os.path.dirname(file_path)
+                                        file_base = os.path.splitext(os.path.basename(file_path))[0]
+                                        
+                                        # 可能的图片扩展名
+                                        img_exts = ['.jpg', '.jpeg', '.png', '.gif', '.bmp']
+                                        
+                                        # 尝试查找同名图片或通用封面
+                                        found_cover = None
+                                        
+                                        # 1. 尝试同名图片
+                                        for ext in img_exts:
+                                            img_path = os.path.join(file_dir, file_base + ext)
+                                            if os.path.exists(img_path):
+                                                found_cover = img_path
+                                                print(f"迁移时找到同名封面: {img_path} 用于 {file_id}")
+                                                break
+                                        
+                                        # 2. 尝试目录下的cover.jpg等通用封面
+                                        if not found_cover:
+                                            cover_names = ["cover.jpg", "cover.jpeg", "cover.png", 
+                                                          "folder.jpg", "folder.jpeg", "album.jpg"]
+                                            for name in cover_names:
+                                                img_path = os.path.join(file_dir, name)
+                                                if os.path.exists(img_path):
+                                                    found_cover = img_path
+                                                    print(f"迁移时找到通用封面: {img_path} 用于 {file_id}")
+                                                    break
+                                        
+                                        # 如果找到封面，保存并设置
+                                        if found_cover:
+                                            saved_cover = self._save_cover_image(found_cover, file_id)
+                                            if saved_cover:
+                                                # 更新封面路径
+                                                self.db.update_feature_info(file_id, {
+                                                    "cover_path": saved_cover,
+                                                    "update_feature": True
+                                                })
+                                                print(f"迁移时已添加封面: {saved_cover} 用于 {file_id}")
+                                    except Exception as e:
+                                        print(f"迁移时添加封面失败: {str(e)}")
+                except Exception as e:
+                    print(f"迁移特征 {file_id} 失败: {str(e)}")
+            
+            print(f"迁移完成，共 {total_count} 条记录，成功迁移 {migrated_count} 条")
+            
+        except Exception as e:
+            print(f"迁移特征数据失败: {str(e)}")
+            traceback.print_exc()
+    
     def update_feature_table(self, features):
         """更新特征表格数据"""
         try:
             # 确保表格的列数正确
-            num_columns = 7  # 7列: ID, 文件名, 歌曲名, 作者, 文件路径, 时长, 添加时间
+            num_columns = 8  # 8列: ID, 封面, 文件名, 歌曲名, 作者, 文件路径, 时长, 添加时间
             if self.feature_table.columnCount() != num_columns:
                 print(f"调整表格列数: 从 {self.feature_table.columnCount()} 到 {num_columns}")
                 self.feature_table.setColumnCount(num_columns)
-                self.feature_table.setHorizontalHeaderLabels(["ID", "文件名", "歌曲名", "作者", "文件路径", "时长(秒)", "添加时间"])
+                self.feature_table.setHorizontalHeaderLabels(["ID", "封面", "文件名", "歌曲名", "作者", "文件路径", "时长(秒)", "添加时间"])
             
             # 清空表格
             self.feature_table.setRowCount(0)
@@ -614,6 +860,11 @@ class FeatureLibraryTab(QWidget):
                 return
                 
             print(f"更新表格：共有 {len(features)} 条记录")
+            
+            # 设置行高以适应图标大小
+            self.feature_table.verticalHeader().setDefaultSectionSize(70)
+            # 设置图标大小
+            self.feature_table.setIconSize(QSize(60, 60))
             
             # 添加数据
             for i, feature in enumerate(features):
@@ -625,46 +876,144 @@ class FeatureLibraryTab(QWidget):
                     id_item.setToolTip(str(feature.get("id", "")))
                     self.feature_table.setItem(i, 0, id_item)
                     
+                    # 设置封面
+                    cover_item = QTableWidgetItem()
+                    cover_path = feature.get("cover_path", "")
+                    print(f"正在处理封面: {cover_path}, 是否存在: {os.path.exists(cover_path) if cover_path else False}")
+                    
+                    cover_loaded = False
+                    if cover_path and os.path.exists(cover_path):
+                        try:
+                            # 直接使用QPixmap加载图片
+                            pixmap = QPixmap(cover_path)
+                            if not pixmap.isNull():
+                                pixmap = pixmap.scaled(60, 60, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                                # 设置图标
+                                icon = QIcon(pixmap)
+                                cover_item.setIcon(icon)
+                                cover_loaded = True
+                                print(f"成功加载封面: {cover_path}, 尺寸: {pixmap.width()}x{pixmap.height()}")
+                            else:
+                                print(f"无法加载封面为QPixmap: {cover_path}")
+                        except Exception as e:
+                            print(f"加载封面图片异常: {str(e)}")
+                    
+                    if not cover_loaded:
+                        # 如果没有封面或封面不存在，尝试查找匹配的图片文件
+                        try:
+                            file_path = feature.get("file_path", "")
+                            file_id = feature.get("id", "")
+                            if file_path and os.path.exists(file_path) and file_id:
+                                # 尝试在音频文件所在目录查找同名图片
+                                file_dir = os.path.dirname(file_path)
+                                file_base = os.path.splitext(os.path.basename(file_path))[0]
+                                
+                                # 可能的图片扩展名
+                                img_exts = ['.jpg', '.jpeg', '.png', '.gif', '.bmp']
+                                
+                                # 尝试查找同名图片或通用封面
+                                found_cover = None
+                                
+                                # 1. 尝试同名图片
+                                for ext in img_exts:
+                                    img_path = os.path.join(file_dir, file_base + ext)
+                                    if os.path.exists(img_path):
+                                        found_cover = img_path
+                                        print(f"找到同名封面: {img_path}")
+                                        break
+                                
+                                # 2. 尝试目录下的cover.jpg等通用封面
+                                if not found_cover:
+                                    cover_names = ["cover.jpg", "cover.jpeg", "cover.png", 
+                                                  "folder.jpg", "folder.jpeg", "album.jpg"]
+                                    for name in cover_names:
+                                        img_path = os.path.join(file_dir, name)
+                                        if os.path.exists(img_path):
+                                            found_cover = img_path
+                                            print(f"找到通用封面: {img_path}")
+                                            break
+                                
+                                # 如果找到封面，保存并设置
+                                if found_cover:
+                                    # 保存找到的封面
+                                    saved_cover = self._save_cover_image(found_cover, file_id)
+                                    if saved_cover:
+                                        # 更新数据库
+                                        self.db.update_feature_info(file_id, {
+                                            "cover_path": saved_cover,
+                                            "update_feature": True
+                                        })
+                                        # 设置封面
+                                        try:
+                                            pixmap = QPixmap(saved_cover)
+                                            if not pixmap.isNull():
+                                                pixmap = pixmap.scaled(60, 60, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                                                cover_item.setIcon(QIcon(pixmap))
+                                                cover_loaded = True
+                                                print(f"自动添加封面成功: {saved_cover}")
+                                            else:
+                                                print(f"自动添加的封面无法加载为QPixmap: {saved_cover}")
+                                        except Exception as e:
+                                            print(f"设置自动封面异常: {str(e)}")
+                        except Exception as e:
+                            print(f"自动查找封面失败: {str(e)}")
+                    
+                    # 如果仍然没有封面，使用默认封面
+                    if not cover_loaded and self.default_cover:
+                        cover_item.setIcon(QIcon(self.default_cover))
+                        print("使用默认封面图标")
+                    
+                    self.feature_table.setItem(i, 1, cover_item)
+                    
                     # 设置文件名
-                    name_item = QTableWidgetItem(str(feature.get("file_name", "")))
-                    self.feature_table.setItem(i, 1, name_item)
+                    file_name = str(feature.get("file_name", ""))
+                    name_item = QTableWidgetItem(file_name)
+                    self.feature_table.setItem(i, 2, name_item)
                     
                     # 设置歌曲名
-                    song_name_item = QTableWidgetItem(str(feature.get("song_name", "")))
-                    self.feature_table.setItem(i, 2, song_name_item)
+                    song_name = feature.get("song_name", "")
+                    if not song_name and file_name:
+                        # 如果歌曲名为空，使用文件名（不带扩展名）作为默认歌曲名
+                        song_name = os.path.splitext(file_name)[0]
+                    song_name_item = QTableWidgetItem(str(song_name))
+                    self.feature_table.setItem(i, 3, song_name_item)
                     
                     # 设置作者
-                    author_item = QTableWidgetItem(str(feature.get("author", "")))
-                    self.feature_table.setItem(i, 3, author_item)
+                    author = feature.get("author", "")
+                    if not author:
+                        author = "未知艺术家"
+                    author_item = QTableWidgetItem(str(author))
+                    self.feature_table.setItem(i, 4, author_item)
                     
                     # 设置文件路径
                     path_item = QTableWidgetItem(str(feature.get("file_path", "")))
                     path_item.setToolTip(str(feature.get("file_path", "")))
-                    self.feature_table.setItem(i, 4, path_item)
+                    self.feature_table.setItem(i, 5, path_item)
                     
                     # 设置时长
                     duration = feature.get("duration", 0)
                     duration_str = f"{duration:.2f}" if isinstance(duration, (int, float)) else str(duration)
                     duration_item = QTableWidgetItem(duration_str)
-                    self.feature_table.setItem(i, 5, duration_item)
+                    self.feature_table.setItem(i, 6, duration_item)
                     
                     # 设置添加时间
                     time_item = QTableWidgetItem(str(feature.get("added_time", "")))
-                    self.feature_table.setItem(i, 6, time_item)
+                    self.feature_table.setItem(i, 7, time_item)
                 except Exception as e:
                     print(f"添加行 {i} 时出错: {str(e)}")
                     traceback.print_exc()
             
             # 设置列宽
-            self.feature_table.setColumnWidth(0, 60)  # ID列
-            self.feature_table.setColumnWidth(1, 200)  # 文件名列
-            self.feature_table.setColumnWidth(2, 200)  # 歌曲名列
-            self.feature_table.setColumnWidth(3, 120)  # 作者列
-            self.feature_table.setColumnWidth(5, 80)   # 时长列
-            self.feature_table.setColumnWidth(6, 150)  # 添加时间列
+            self.feature_table.setColumnWidth(0, 100)   # ID列
+            self.feature_table.setColumnWidth(1, 70)    # 封面列 - 增加宽度
+            self.feature_table.setColumnWidth(2, 200)   # 文件名列
+            self.feature_table.setColumnWidth(3, 200)   # 歌曲名列
+            self.feature_table.setColumnWidth(4, 150)   # 作者列
+            self.feature_table.setColumnWidth(6, 100)   # 时长列
+            self.feature_table.setColumnWidth(7, 180)   # 添加时间列
             
             # 设置文件路径列自动拉伸
-            self.feature_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+            self.feature_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
             
         except Exception as e:
             print(f"更新特征表格失败: {str(e)}")
@@ -712,12 +1061,20 @@ class FeatureLibraryTab(QWidget):
         
         # 检查是否有选中的项
         if self.feature_table.selectedItems():
+            selected_count = len(set(item.row() for item in self.feature_table.selectedItems()))
+            
             edit_action = QAction("编辑歌曲信息", self)
             edit_action.triggered.connect(self.edit_song_info)
             context_menu.addAction(edit_action)
             
-            delete_action = QAction("删除", self)
-            delete_action.triggered.connect(self.delete_selected_features)
+            # 如果选中多行，显示批量删除选项
+            if selected_count > 1:
+                delete_action = QAction(f"删除所选({selected_count}项)", self)
+                delete_action.triggered.connect(self.batch_delete_features)
+            else:
+                delete_action = QAction("删除", self)
+                delete_action.triggered.connect(self.delete_selected_features)
+            
             context_menu.addAction(delete_action)
             
             play_action = QAction("播放", self)
@@ -771,6 +1128,71 @@ class FeatureLibraryTab(QWidget):
                 f"成功删除 {delete_count} 个特征。"
             )
     
+    def batch_delete_features(self):
+        """批量删除选中的特征"""
+        selected_rows = set(item.row() for item in self.feature_table.selectedItems())
+        
+        if not selected_rows:
+            QMessageBox.information(self, "提示", "请先选择要删除的条目")
+            return
+            
+        # 确认删除
+        confirm = QMessageBox.question(
+            self, 
+            "确认批量删除", 
+            f"确定要删除选中的 {len(selected_rows)} 个特征吗？\n这将从特征库中永久删除这些数据，此操作无法撤销。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, 
+            QMessageBox.StandardButton.No
+        )
+        
+        if confirm == QMessageBox.StandardButton.Yes:
+            # 显示进度对话框
+            progress_dialog = QDialog(self)
+            progress_dialog.setWindowTitle("正在删除")
+            progress_dialog.setFixedSize(400, 100)
+            progress_layout = QVBoxLayout(progress_dialog)
+            
+            progress_label = QLabel(f"正在删除 {len(selected_rows)} 个特征...")
+            progress_bar = QProgressBar()
+            progress_bar.setRange(0, len(selected_rows))
+            progress_bar.setValue(0)
+            
+            progress_layout.addWidget(progress_label)
+            progress_layout.addWidget(progress_bar)
+            
+            progress_dialog.show()
+            QApplication.processEvents()
+            
+            # 收集要删除的ID
+            ids_to_delete = [self.feature_table.item(row, 0).text() for row in selected_rows]
+            
+            # 执行删除
+            delete_count = 0
+            for i, file_id in enumerate(ids_to_delete):
+                try:
+                    if self.db.remove_feature(file_id):
+                        delete_count += 1
+                except Exception as e:
+                    print(f"删除特征 {file_id} 失败: {str(e)}")
+                
+                # 更新进度
+                progress_bar.setValue(i + 1)
+                progress_label.setText(f"正在删除: {i+1}/{len(selected_rows)}")
+                QApplication.processEvents()
+            
+            # 关闭进度对话框
+            progress_dialog.close()
+            
+            # 刷新列表
+            self.refresh_feature_list()
+            
+            # 显示结果
+            QMessageBox.information(
+                self, 
+                "批量删除结果", 
+                f"成功删除 {delete_count} 个特征，失败 {len(ids_to_delete) - delete_count} 个。"
+            )
+    
     def play_selected_feature(self):
         """播放选中的特征对应的音频文件"""
         selected_items = self.feature_table.selectedItems()
@@ -802,7 +1224,7 @@ class FeatureLibraryTab(QWidget):
             )
     
     def view_feature_details(self):
-        """查看特征详情"""
+        """查看选中特征的详细信息"""
         selected_items = self.feature_table.selectedItems()
         if not selected_items:
             return
@@ -811,207 +1233,327 @@ class FeatureLibraryTab(QWidget):
         row = selected_items[0].row()
         file_id = self.feature_table.item(row, 0).text()
         
-        # 获取特征详情
+        # 获取完整特征数据
         feature_data = self.db.get_feature(file_id)
         
         if not feature_data:
             QMessageBox.warning(
                 self, 
-                "无法查看详情", 
-                "未找到相关特征数据。"
+                "未找到详情", 
+                "无法获取所选特征的详细信息。"
             )
             return
             
         # 创建详情对话框
         dialog = QDialog(self)
         dialog.setWindowTitle("特征详情")
-        dialog.setMinimumWidth(600)
+        dialog.setMinimumWidth(500)
+        dialog.setMinimumHeight(400)
         
         layout = QVBoxLayout(dialog)
         
-        # 基本信息区域
-        form_layout = QFormLayout()
+        # 分隔器
+        splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        file_name_label = QLabel(feature_data.get("file_name", ""))
-        file_name_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        form_layout.addRow("文件名:", file_name_label)
+        # 左侧：封面和基本信息
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
         
-        song_name_label = QLabel(feature_data.get("song_name", ""))
-        song_name_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        form_layout.addRow("歌曲名:", song_name_label)
+        # 显示封面
+        cover_label = QLabel()
+        cover_label.setFixedSize(200, 200)
+        cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        cover_label.setStyleSheet("border: 1px solid #CCCCCC; background-color: #F5F5F5;")
         
-        author_label = QLabel(feature_data.get("author", ""))
-        author_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        form_layout.addRow("作者:", author_label)
-        
-        file_path_label = QLabel(feature_data.get("file_path", ""))
-        file_path_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        form_layout.addRow("文件路径:", file_path_label)
-        
-        duration_label = QLabel(f"{feature_data.get('duration', 0):.2f} 秒")
-        form_layout.addRow("时长:", duration_label)
-        
-        # 添加其他特征数据
-        features_text = QTableWidget()
-        features_text.setColumnCount(2)
-        features_text.setHorizontalHeaderLabels(["特征名", "值"])
-        features_text.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        
-        # 填充特征数据
-        row = 0
-        for key, value in feature_data.items():
-            # 跳过基本信息和大型特征数据
-            if key in ["file_name", "file_path", "duration", "error", "fingerprint", 
-                      "mel_mean", "mel_std", "mfcc_mean", "mfcc_std", "chroma_mean", 
-                      "song_name", "author"]:
-                continue
-                
-            features_text.insertRow(row)
-            features_text.setItem(row, 0, QTableWidgetItem(key))
-            
-            # 处理不同类型的值
-            if isinstance(value, (list, dict)):
-                value_str = f"{type(value).__name__} (长度: {len(value)})"
+        # 加载封面
+        cover_path = feature_data.get("cover_path", "")
+        if cover_path and os.path.exists(cover_path):
+            try:
+                # 使用QImage先加载验证
+                image = QImage(cover_path)
+                if not image.isNull():
+                    # 转换为QPixmap并设置
+                    pixmap = QPixmap.fromImage(image)
+                    if not pixmap.isNull():
+                        pixmap = pixmap.scaled(190, 190, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                        cover_label.setPixmap(pixmap)
+                        print(f"详情窗口: 成功加载封面: {cover_path}, 尺寸: {pixmap.width()}x{pixmap.height()}")
+                    else:
+                        cover_label.setText("图片转换失败")
+                        print(f"详情窗口: 图片无法转换为QPixmap: {cover_path}")
+                else:
+                    cover_label.setText("无法加载图片")
+                    print(f"详情窗口: 图片无法加载为QImage: {cover_path}")
+            except Exception as e:
+                cover_label.setText("加载图片出错")
+                print(f"详情窗口: 加载封面出错: {str(e)}")
+        else:
+            cover_label.setText("无封面")
+            if cover_path:
+                print(f"详情窗口: 封面路径存在但文件不存在: {cover_path}")
             else:
-                value_str = str(value)
+                print("详情窗口: 无封面路径")
+        
+        # 基本信息
+        basic_info = QLabel(
+            f"<b>文件名:</b> {feature_data.get('file_name', '')}<br>"
+            f"<b>歌曲名:</b> {feature_data.get('song_name', '')}<br>"
+            f"<b>作者:</b> {feature_data.get('author', '')}<br>"
+            f"<b>时长:</b> {feature_data.get('duration', '0')} 秒<br>"
+            f"<b>添加时间:</b> {feature_data.get('added_time', '')}<br>"
+        )
+        basic_info.setWordWrap(True)
+        
+        left_layout.addWidget(cover_label, 0, Qt.AlignmentFlag.AlignCenter)
+        left_layout.addWidget(basic_info)
+        left_layout.addStretch()
+        
+        # 右侧：技术特征信息
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
+        
+        # 特征信息
+        details_label = QLabel("技术特征:")
+        details_label.setStyleSheet("font-weight: bold;")
+        
+        # 创建一个表格来显示特征数据
+        details_table = QTableWidget()
+        details_table.setColumnCount(2)
+        details_table.setHorizontalHeaderLabels(["特征", "值"])
+        details_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        details_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        
+        # 添加技术特征数据
+        tech_features = [
+            ("梅尔频谱均值", "mel_mean"),
+            ("梅尔频谱标准差", "mel_std"),
+            ("MFCC均值", "mfcc_mean"),
+            ("MFCC标准差", "mfcc_std"),
+            ("色度特征均值", "chroma_mean"),
+            ("谱质心均值", "spectral_centroid_mean"),
+            ("谱质心标准差", "spectral_centroid_std"),
+            ("过零率均值", "zero_crossing_rate_mean"),
+            ("节奏/速度", "tempo")
+        ]
+        
+        row = 0
+        for label, key in tech_features:
+            if key in feature_data:
+                value = feature_data[key]
                 
-            features_text.setItem(row, 1, QTableWidgetItem(value_str))
-            row += 1
+                # 对于数组类型，显示长度而不是具体内容
+                if isinstance(value, list):
+                    value_str = f"[数组，长度: {len(value)}]"
+                else:
+                    value_str = str(value)
+                    
+                details_table.insertRow(row)
+                details_table.setItem(row, 0, QTableWidgetItem(label))
+                details_table.setItem(row, 1, QTableWidgetItem(value_str))
+                row += 1
         
-        # 创建按钮盒
-        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        button_box.rejected.connect(dialog.reject)
+        right_layout.addWidget(details_label)
+        right_layout.addWidget(details_table)
         
-        # 添加组件到布局
-        layout.addLayout(form_layout)
-        layout.addWidget(QLabel("特征数据:"))
-        layout.addWidget(features_text)
-        layout.addWidget(button_box)
+        # 添加到分隔器
+        splitter.addWidget(left_widget)
+        splitter.addWidget(right_widget)
+        splitter.setSizes([200, 300])  # 设置初始大小比例
+        
+        # 关闭按钮
+        close_button = QPushButton("关闭")
+        close_button.setFixedWidth(100)
+        close_button.clicked.connect(dialog.accept)
+        
+        # 添加到布局
+        layout.addWidget(splitter)
+        layout.addWidget(close_button, 0, Qt.AlignmentFlag.AlignRight)
         
         # 显示对话框
         dialog.exec()
     
     def add_single_file(self):
-        """添加单个音频文件到特征库"""
-        # 打开文件选择对话框
+        """添加单个音频文件"""
+        # 选择音频文件
         file_path, _ = QFileDialog.getOpenFileName(
-            self, 
-            "选择音频文件", 
-            "", 
+            self,
+            "选择音频文件",
+            "",
             "音频文件 (*.mp3 *.wav *.flac *.ogg *.m4a)"
         )
         
         if not file_path:
             return
+            
+        # 创建对话框
+        dialog = QDialog(self)
+        dialog.setWindowTitle("添加到特征库")
+        dialog.setMinimumWidth(500)
         
-        # 创建对话框收集歌曲信息
-        info_dialog = QDialog(self)
-        info_dialog.setWindowTitle("输入歌曲信息")
-        info_dialog.setMinimumWidth(400)
-        
-        layout = QVBoxLayout(info_dialog)
-        
-        # 文件名显示
-        file_label = QLabel(f"文件: {os.path.basename(file_path)}")
-        file_label.setStyleSheet("font-weight: bold;")
+        # 主布局
+        layout = QVBoxLayout(dialog)
         
         # 表单布局
         form_layout = QFormLayout()
         
+        # 文件信息
+        file_name = os.path.basename(file_path)
+        file_label = QLabel(f"文件: {file_name}")
+        file_label.setStyleSheet("font-weight: bold;")
+        
+        # 获取音频文件的元数据
+        try:
+            extractor = AudioFeatureExtractor()
+            metadata = extractor._extract_metadata(file_path)
+            default_title = metadata.get("title", "")
+            default_artist = metadata.get("artist", "")
+        except:
+            default_title = ""
+            default_artist = ""
+        
         # 歌曲名输入
         song_name_input = QLineEdit()
-        song_name_input.setPlaceholderText("请输入歌曲名")
-        form_layout.addRow("歌曲名:", song_name_input)
+        song_name_input.setText(default_title)
+        song_name_input.setPlaceholderText("请输入歌曲名称")
+        form_layout.addRow("歌曲名称:", song_name_input)
         
         # 作者输入
         author_input = QLineEdit()
-        author_input.setPlaceholderText("请输入作者名")
-        form_layout.addRow("作者:", author_input)
+        author_input.setText(default_artist)
+        author_input.setPlaceholderText("请输入作者/艺术家")
+        form_layout.addRow("作者/艺术家:", author_input)
         
-        # 按钮
+        # 封面选择
+        cover_layout = QHBoxLayout()
+        cover_path_input = QLineEdit()
+        cover_path_input.setReadOnly(True)
+        cover_path_input.setPlaceholderText("可选")
+        
+        browse_button = QPushButton("浏览...")
+        browse_button.setFixedWidth(80)
+        
+        # 封面预览
+        cover_preview = QLabel()
+        cover_preview.setFixedSize(150, 150)
+        cover_preview.setStyleSheet("background-color: #f0f0f0; border: 1px solid #ddd;")
+        cover_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        cover_preview.setText("无封面")
+        
+        def browse_cover():
+            """浏览封面图片"""
+            cover_file, _ = QFileDialog.getOpenFileName(
+                dialog,
+                "选择封面图片",
+                "",
+                "图片文件 (*.jpg *.jpeg *.png *.gif *.bmp)"
+            )
+            
+            if cover_file:
+                cover_path_input.setText(cover_file)
+                
+                # 显示预览
+                pixmap = QPixmap(cover_file)
+                if not pixmap.isNull():
+                    pixmap = pixmap.scaled(150, 150, Qt.AspectRatioMode.KeepAspectRatio)
+                    cover_preview.setPixmap(pixmap)
+                    cover_preview.setToolTip(cover_file)
+                else:
+                    cover_preview.setText("无法加载封面")
+        
+        browse_button.clicked.connect(browse_cover)
+        
+        cover_layout.addWidget(cover_path_input)
+        cover_layout.addWidget(browse_button)
+        
+        form_layout.addRow("封面图片:", cover_layout)
+        form_layout.addRow("预览:", cover_preview)
+        
+        # 进度条
+        progress_bar = QProgressBar()
+        progress_bar.setRange(0, 100)
+        progress_bar.setValue(0)
+        progress_bar.setVisible(False)
+        
+        # 处理按钮
         button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | 
-            QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        button_box.accepted.connect(info_dialog.accept)
-        button_box.rejected.connect(info_dialog.reject)
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
         
-        # 添加组件到布局
+        # 添加到布局
         layout.addWidget(file_label)
         layout.addLayout(form_layout)
+        layout.addWidget(progress_bar)
         layout.addWidget(button_box)
         
-        # 显示对话框
-        song_name = ""
-        author = ""
-        if info_dialog.exec() == QDialog.DialogCode.Accepted:
-            song_name = song_name_input.text()
-            author = author_input.text()
-        else:
-            return  # 用户取消了输入
-            
-        # 显示处理对话框
-        progress_dialog = QDialog(self)
-        progress_dialog.setWindowTitle("提取特征")
-        progress_dialog.setFixedSize(400, 100)
-        
-        dialog_layout = QVBoxLayout(progress_dialog)
-        
-        progress_label = QLabel(f"正在提取 {os.path.basename(file_path)} 的特征...")
-        progress_bar = QProgressBar()
-        progress_bar.setRange(0, 0)  # 不确定进度
-        
-        dialog_layout.addWidget(progress_label)
-        dialog_layout.addWidget(progress_bar)
-        
-        # 使用延迟调用来允许对话框显示
         def process_file():
+            """处理单个文件"""
+            progress_bar.setVisible(True)
+            button_box.setEnabled(False)
+            
+            # 更新UI
+            QApplication.processEvents()
+            
             try:
-                # 创建特征提取器
-                extractor = AudioFeatureExtractor()
-                
                 # 提取特征
-                features = extractor.extract_features(file_path)
+                extractor = AudioFeatureExtractor()
+                feature_data = extractor.extract_features(file_path)
                 
-                # 添加歌曲信息
-                features["song_name"] = song_name
-                features["author"] = author
+                if not feature_data:
+                    QMessageBox.warning(
+                        dialog,
+                        "提取失败",
+                        f"无法从文件 {file_name} 提取特征"
+                    )
+                    return False
+                
+                # 添加用户输入的信息
+                feature_data["song_name"] = song_name_input.text()
+                feature_data["author"] = author_input.text()
+                
+                # 处理封面
+                cover_path = cover_path_input.text()
+                if cover_path and os.path.exists(cover_path):
+                    # 生成文件ID
+                    file_id = hashlib.md5(file_name.encode('utf-8')).hexdigest()
+                    
+                    # 保存封面图片到特征库
+                    cover_save_path = self._save_cover_image(cover_path, file_id)
+                    if cover_save_path:
+                        feature_data["cover_path"] = cover_save_path
                 
                 # 添加到数据库
-                if "error" not in features and self.db.add_feature(features):
-                    # 关闭对话框
-                    progress_dialog.accept()
-                    
-                    # 刷新列表
-                    self.refresh_feature_list()
-                    
-                    # 显示成功消息
-                    QMessageBox.information(
-                        self, 
-                        "提取成功", 
-                        f"成功提取 {os.path.basename(file_path)} 的特征。"
-                    )
-                else:
-                    # 显示错误
-                    error_msg = features.get("error", "未知错误")
-                    progress_dialog.reject()
-                    QMessageBox.warning(
-                        self, 
-                        "提取失败", 
-                        f"无法提取特征: {error_msg}"
-                    )
+                self.db.add_feature(feature_data)
+                
+                # 更新UI
+                self.refresh_feature_list()
+                
+                return True
+                
             except Exception as e:
-                # 显示错误
-                progress_dialog.reject()
-                QMessageBox.warning(
-                    self, 
-                    "提取失败", 
-                    f"提取特征过程中出错: {str(e)}"
+                print(f"处理文件失败: {str(e)}")
+                traceback.print_exc()
+                QMessageBox.critical(
+                    dialog,
+                    "处理出错",
+                    f"处理文件时发生错误: {str(e)}"
                 )
+                return False
+            finally:
+                progress_bar.setVisible(False)
+                button_box.setEnabled(True)
         
-        # 显示对话框并延迟执行处理
-        QTimer.singleShot(100, process_file)
-        progress_dialog.exec()
+        # 显示对话框并处理结果
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            success = process_file()
+            
+            if success:
+                QMessageBox.information(
+                    self,
+                    "添加成功",
+                    f"文件 {file_name} 已成功添加到特征库"
+                )
     
     def select_folder(self):
         """选择文件夹对话框"""
@@ -1040,12 +1582,17 @@ class FeatureLibraryTab(QWidget):
         # 创建并启动提取线程，使用固定的数据库路径
         use_filename = self.use_filename_checkbox.isChecked()
         default_author = self.default_author_input.text()
+        auto_find_cover = self.auto_cover_checkbox.isChecked()
+        cover_format = self.cover_format_combo.currentText()
         
         self.extraction_thread = FeatureExtractionThread(
             self.selected_folder, 
             self.database_path,
             use_filename,
-            default_author
+            default_author,
+            auto_find_cover,
+            cover_format,
+            self._save_cover_image  # 传递封面保存方法
         )
         self.extraction_thread.progress_updated.connect(self.update_progress)
         self.extraction_thread.file_processed.connect(self.add_processed_file)
@@ -1097,83 +1644,317 @@ class FeatureLibraryTab(QWidget):
                                 "请检查音频文件格式或选择其他文件夹。")
     
     def edit_song_info(self):
-        """编辑选中音频的歌曲信息"""
+        """编辑歌曲信息"""
         selected_items = self.feature_table.selectedItems()
         if not selected_items:
             return
             
-        # 获取选中行的特征ID和当前信息
-        row = selected_items[0].row()
-        file_id = self.feature_table.item(row, 0).text()
-        file_name = self.feature_table.item(row, 1).text()
-        current_song_name = self.feature_table.item(row, 2).text()
-        current_author = self.feature_table.item(row, 3).text()
+        # 获取所选行
+        selected_row = selected_items[0].row()
         
-        # 获取完整特征数据
+        # 获取文件ID
+        file_id = self.feature_table.item(selected_row, 0).text()
+        print(f"编辑歌曲信息，文件ID: {file_id}")
+        
+        # 获取当前信息
+        current_info = {
+            "file_name": self.feature_table.item(selected_row, 2).text(),
+            "song_name": self.feature_table.item(selected_row, 3).text() if self.feature_table.item(selected_row, 3) else "",
+            "author": self.feature_table.item(selected_row, 4).text() if self.feature_table.item(selected_row, 4) else "",
+            "file_path": self.feature_table.item(selected_row, 5).text() if self.feature_table.item(selected_row, 5) else ""
+        }
+        
+        # 获取封面路径
         feature_data = self.db.get_feature(file_id)
-        
-        if not feature_data:
-            QMessageBox.warning(
-                self, 
-                "无法编辑", 
-                "未找到相关特征数据。"
-            )
-            return
+        if feature_data:
+            current_info["cover_path"] = feature_data.get("cover_path", "")
+            print(f"当前封面路径: {current_info['cover_path']}")
             
         # 创建编辑对话框
         dialog = QDialog(self)
         dialog.setWindowTitle("编辑歌曲信息")
-        dialog.setMinimumWidth(400)
+        dialog.setMinimumWidth(500)
         
-        layout = QVBoxLayout(dialog)
+        # 设置布局
+        layout = QFormLayout(dialog)
         
-        # 文件名显示（不可编辑）
-        file_label = QLabel(f"文件: {file_name}")
-        file_label.setStyleSheet("font-weight: bold;")
+        # 歌曲名输入框
+        song_name_input = QLineEdit(dialog)
+        song_name_input.setText(current_info.get("song_name", ""))
+        song_name_input.setPlaceholderText("请输入歌曲名称")
+        layout.addRow("歌曲名称:", song_name_input)
         
-        # 表单布局
-        form_layout = QFormLayout()
+        # 作者输入框
+        author_input = QLineEdit(dialog)
+        author_input.setText(current_info.get("author", ""))
+        author_input.setPlaceholderText("请输入作者/艺术家")
+        layout.addRow("作者/艺术家:", author_input)
         
-        # 歌曲名输入
-        song_name_input = QLineEdit(current_song_name)
-        form_layout.addRow("歌曲名:", song_name_input)
+        # 文件名（只读）
+        file_name_label = QLineEdit(dialog)
+        file_name_label.setText(current_info.get("file_name", ""))
+        file_name_label.setReadOnly(True)
+        layout.addRow("文件名:", file_name_label)
         
-        # 作者输入
-        author_input = QLineEdit(current_author)
-        form_layout.addRow("作者:", author_input)
+        # 文件路径（只读）
+        file_path_label = QLineEdit(dialog)
+        file_path_label.setText(current_info.get("file_path", ""))
+        file_path_label.setReadOnly(True)
+        layout.addRow("文件路径:", file_path_label)
         
-        # 按钮
+        # 封面图片选择
+        cover_layout = QHBoxLayout()
+        cover_label = QLabel("封面图片:")
+        cover_path_input = QLineEdit(dialog)
+        cover_path_input.setText(current_info.get("cover_path", ""))
+        cover_path_input.setReadOnly(True)
+        
+        browse_cover_btn = QPushButton("浏览...", dialog)
+        clear_cover_btn = QPushButton("清除", dialog)
+        cover_layout.addWidget(cover_path_input)
+        cover_layout.addWidget(browse_cover_btn)
+        cover_layout.addWidget(clear_cover_btn)
+        layout.addRow(cover_label, cover_layout)
+        
+        # 封面预览
+        cover_preview = QLabel(dialog)
+        cover_preview.setFixedSize(150, 150)
+        cover_preview.setStyleSheet("background-color: #f0f0f0; border: 1px solid #ddd;")
+        cover_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # 如果有封面则显示
+        if current_info.get("cover_path", "") and os.path.exists(current_info["cover_path"]):
+            try:
+                # 使用QImage先加载
+                image = QImage(current_info["cover_path"])
+                if not image.isNull():
+                    # 转换为QPixmap
+                    pixmap = QPixmap.fromImage(image)
+                    if not pixmap.isNull():
+                        pixmap = pixmap.scaled(150, 150, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                        cover_preview.setPixmap(pixmap)
+                        print(f"编辑对话框: 成功加载封面预览: {current_info['cover_path']}, 尺寸: {pixmap.width()}x{pixmap.height()}")
+                    else:
+                        cover_preview.setText("无法转换图片")
+                        print(f"编辑对话框: 图片无法转换为QPixmap: {current_info['cover_path']}")
+                else:
+                    cover_preview.setText("无法加载封面")
+                    print(f"编辑对话框: 无法加载封面预览为QImage: {current_info['cover_path']}")
+            except Exception as e:
+                cover_preview.setText("加载错误")
+                print(f"编辑对话框: 加载封面预览出错: {str(e)}")
+        else:
+            cover_preview.setText("无封面")
+            if current_info.get("cover_path", ""):
+                print(f"编辑对话框: 封面路径存在但文件不存在: {current_info['cover_path']}")
+            else:
+                print("编辑对话框: 无封面路径")
+        
+        layout.addRow("", cover_preview)
+        
+        # 为浏览按钮添加功能
+        def browse_cover():
+            """浏览封面图片"""
+            file_path, _ = QFileDialog.getOpenFileName(
+                dialog,
+                "选择封面图片",
+                "",
+                "图片文件 (*.jpg *.jpeg *.png *.bmp *.gif)"
+            )
+            
+            if file_path:
+                cover_path_input.setText(file_path)
+                print(f"编辑对话框: 选择新封面: {file_path}")
+                
+                # 更新预览
+                try:
+                    # 使用QImage先加载
+                    image = QImage(file_path)
+                    if not image.isNull():
+                        # 转换为QPixmap
+                        pixmap = QPixmap.fromImage(image)
+                        if not pixmap.isNull():
+                            pixmap = pixmap.scaled(150, 150, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                            cover_preview.setPixmap(pixmap)
+                            print(f"编辑对话框: 成功加载新封面预览: {file_path}, 尺寸: {pixmap.width()}x{pixmap.height()}")
+                        else:
+                            cover_preview.setText("无法转换图片")
+                            print(f"编辑对话框: 无法将新封面转换为QPixmap: {file_path}")
+                    else:
+                        cover_preview.setText("无法加载封面")
+                        print(f"编辑对话框: 无法加载新封面预览为QImage: {file_path}")
+                except Exception as e:
+                    cover_preview.setText("加载错误")
+                    print(f"编辑对话框: 加载新封面预览出错: {str(e)}")
+        
+        # 为清除按钮添加功能
+        def clear_cover():
+            """清除封面图片"""
+            cover_path_input.setText("")
+            cover_preview.clear()
+            cover_preview.setText("无封面")
+            print("清除封面图片")
+        
+        browse_cover_btn.clicked.connect(browse_cover)
+        clear_cover_btn.clicked.connect(clear_cover)
+        
+        # 确定和取消按钮
         button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Save | 
-            QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            Qt.Orientation.Horizontal,
+            dialog
         )
+        layout.addWidget(button_box)
+        
         button_box.accepted.connect(dialog.accept)
         button_box.rejected.connect(dialog.reject)
         
-        # 添加组件到布局
-        layout.addWidget(file_label)
-        layout.addLayout(form_layout)
-        layout.addWidget(button_box)
-        
         # 显示对话框并处理结果
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            # 获取用户输入
-            new_song_name = song_name_input.text()
-            new_author = author_input.text()
+            # 获取编辑后的信息
+            updated_info = {
+                "song_name": song_name_input.text(),
+                "author": author_input.text(),
+                "update_feature": True
+            }
+            print(f"更新歌曲信息: 歌曲名={updated_info['song_name']}, 作者={updated_info['author']}")
             
-            # 更新特征数据
-            feature_data["song_name"] = new_song_name
-            feature_data["author"] = new_author
+            # 处理封面
+            new_cover_path = cover_path_input.text()
+            if new_cover_path and os.path.exists(new_cover_path):
+                if new_cover_path != current_info.get("cover_path", ""):
+                    # 保存新封面
+                    saved_cover_path = self._save_cover_image(new_cover_path, file_id)
+                    if saved_cover_path:
+                        updated_info["cover_path"] = saved_cover_path
+                        print(f"更新封面路径: {saved_cover_path}")
+            elif not new_cover_path and current_info.get("cover_path", ""):
+                # 清除封面
+                updated_info["cover_path"] = ""
+                print("清除封面路径")
             
-            # 保存到数据库
-            self.db.add_feature(feature_data)
+            # 更新数据库
+            try:
+                success = self.db.update_feature_info(file_id, updated_info)
+                
+                if success:
+                    # 刷新表格
+                    self.refresh_feature_list()
+                    QMessageBox.information(self, "更新成功", "歌曲信息已更新")
+                    print("成功更新歌曲信息")
+                else:
+                    QMessageBox.warning(self, "更新失败", "无法更新歌曲信息")
+                    print("更新歌曲信息失败")
+            except Exception as e:
+                QMessageBox.critical(self, "更新错误", f"更新过程中发生错误: {str(e)}")
+                print(f"更新歌曲信息异常: {str(e)}")
+                traceback.print_exc()
+
+    def _get_cover_directory(self):
+        """获取封面图片存储目录"""
+        cover_dir = os.path.join(self.database_path, "covers")
+        os.makedirs(cover_dir, exist_ok=True)
+        print(f"封面存储目录: {cover_dir}, 是否存在: {os.path.exists(cover_dir)}")
+        return cover_dir
+
+    def _save_cover_image(self, image_path, file_id):
+        """保存封面图片
+        
+        Args:
+            image_path: 源图片路径
+            file_id: 文件ID，用于生成封面文件名
             
-            # 更新表格显示
+        Returns:
+            成功返回保存后的图片路径，失败返回空字符串
+        """
+        try:
+            if not image_path or not os.path.exists(image_path):
+                print(f"源图片不存在: {image_path}")
+                return ""
+            
+            # 统一使用PNG格式
+            cover_dir = self._get_cover_directory()
+            cover_filename = f"cover_{file_id}.png"
+            cover_path = os.path.join(cover_dir, cover_filename)
+            
+            print(f"正在保存封面: {image_path} -> {cover_path}")
+            
+            # 加载并处理图片
+            image = QImage(image_path)
+            if not image.isNull():
+                print(f"成功加载源图片: {image_path}, 尺寸: {image.width()}x{image.height()}")
+                
+                # 调整大小以保持一致性
+                max_size = 300  # 限制最大尺寸
+                if image.width() > max_size or image.height() > max_size:
+                    image = image.scaled(max_size, max_size, 
+                                        Qt.AspectRatioMode.KeepAspectRatio, 
+                                        Qt.TransformationMode.SmoothTransformation)
+                    print(f"调整图片尺寸为: {image.width()}x{image.height()}")
+                
+                # 强制保存为PNG格式
+                success = image.save(cover_path, "PNG")
+                print(f"保存图片结果: {success}")
+                
+                # 验证保存结果
+                if success and os.path.exists(cover_path):
+                    test_image = QImage(cover_path)
+                    if not test_image.isNull():
+                        print(f"封面保存成功并验证: {cover_path}")
+                        return cover_path
+                    else:
+                        print(f"保存的图片无法验证，尝试备用方案")
+            
+            # 备用方案：直接复制
+            print(f"使用复制方式保存封面")
+            shutil.copy2(image_path, cover_path)
+            print(f"完成复制: {image_path} -> {cover_path}")
+            return cover_path if os.path.exists(cover_path) else ""
+                
+        except Exception as e:
+            print(f"保存封面图片失败: {str(e)}")
+            traceback.print_exc()
+            return ""
+
+    def _migrate_and_refresh(self):
+        """手动触发元数据迁移并刷新"""
+        try:
+            QMessageBox.information(self, "更新元数据", "开始更新歌曲名和作者信息，请稍候...")
+            self._migrate_old_features()
             self.refresh_feature_list()
+            QMessageBox.information(self, "更新完成", "歌曲信息已更新")
+        except Exception as e:
+            QMessageBox.warning(self, "更新失败", f"更新元数据失败: {str(e)}")
+            print(f"手动迁移失败: {str(e)}")
+            traceback.print_exc()
+
+    def _create_default_cover(self):
+        """创建默认封面图标"""
+        try:
+            # 创建40x40的图像
+            image = QImage(40, 40, QImage.Format.Format_ARGB32)
+            image.fill(QColor(200, 200, 200))  # 设置背景色为浅灰色
             
-            # 显示成功消息
-            QMessageBox.information(
-                self, 
-                "更新成功", 
-                f"成功更新 {file_name} 的歌曲信息。"
-            )
+            # 创建绘图对象
+            painter = QPainter(image)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            
+            # 设置笔刷
+            painter.setPen(QPen(QColor(100, 100, 100), 2))
+            
+            # 绘制音符图标
+            painter.drawEllipse(10, 20, 8, 8)  # 音符的头部
+            painter.drawLine(18, 24, 18, 10)   # 音符的柄
+            painter.drawLine(18, 10, 25, 8)    # 音符的旗帜
+            
+            painter.drawEllipse(23, 23, 7, 7)  # 第二个音符的头部
+            
+            # 完成绘制
+            painter.end()
+            
+            # 转换为QPixmap
+            pixmap = QPixmap.fromImage(image)
+            return pixmap
+        except Exception as e:
+            print(f"创建默认封面失败: {str(e)}")
+            return None
