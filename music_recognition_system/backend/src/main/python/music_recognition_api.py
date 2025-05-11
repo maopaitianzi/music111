@@ -80,6 +80,20 @@ SONG_METADATA = {
     }
 }
 
+@app.route('/api', methods=['GET'])
+def api_index():
+    """API根路径，返回可用端点信息"""
+    return jsonify({
+        "status": "API服务正在运行",
+        "available_endpoints": [
+            {"path": "/api/health", "method": "GET", "description": "健康检查"},
+            {"path": "/api/database/status", "method": "GET", "description": "获取数据库状态"},
+            {"path": "/api/database/add", "method": "POST", "description": "添加歌曲到数据库"},
+            {"path": "/api/recognize", "method": "POST", "description": "识别音乐"}
+        ],
+        "version": "1.0.0"
+    })
+
 @app.route('/api/recognize', methods=['POST'])
 def recognize_music():
     """处理音乐识别请求"""
