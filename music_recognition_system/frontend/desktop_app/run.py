@@ -24,7 +24,7 @@ try:
 except ImportError:
     print("未安装 PyQt6，正在尝试安装...")
     import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "PyQt6"])
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "PyQt6==6.9.0", "PyQt6-WebEngine==6.9.0"])
     from PyQt6.QtWidgets import QApplication
     print("PyQt6 安装完成")
 
