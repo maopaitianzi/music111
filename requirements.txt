@@ -32,5 +32,4 @@ plotly==5.9.0
 # 其他工具
 python-dotenv==1.0.0
 jsonschema==4.17.3
-pytest==7.3.1  # 用于测试
-logging==0.4.9.6 
+pytest==7.3.1  # 用于测试 

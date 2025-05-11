@@ -14,10 +14,7 @@ def start_backend_api():
         process = subprocess.Popen(
             cmd, 
             cwd=backend_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            creationflags=subprocess.CREATE_NEW_CONSOLE
+            text=True
         )
         print(f"后端API服务已启动，PID: {process.pid}")
         return process
@@ -35,12 +32,9 @@ def start_desktop_app():
         process = subprocess.Popen(
             cmd, 
             cwd=app_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            creationflags=subprocess.CREATE_NEW_CONSOLE
+            text=True
         )
-        print(f"桌面应用已启动 e:，PID: {process.pid}")
+        print(f"桌面应用已启动，PID: {process.pid}")
         return process
     except Exception as e:
         print(f"启动桌面应用失败: {str(e)}")
