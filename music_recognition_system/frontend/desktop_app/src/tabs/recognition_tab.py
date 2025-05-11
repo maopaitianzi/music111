@@ -522,7 +522,6 @@ class RecognitionTab(QWidget):
                 background-color: rgba(255, 255, 255, 0.75);  /* 更透明的白色背景 */
                 border-radius: 15px;
                 border: 1px solid rgba(255, 255, 255, 0.9);
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
             }
             
             /* 自适应小屏幕 */
@@ -575,21 +574,10 @@ class RecognitionTab(QWidget):
         self.cover_label.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
         self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.cover_label.setStyleSheet("""
-            #cover_label {
-                background-color: #EEEEEE; 
-                border-radius: 10px; 
-                font-size: 64px;
-                border: 2px solid #FFFFFF;
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            }
-            
-            /* 自适应小屏幕 */
-            @media (max-width: 800px) {
-                #cover_label {
-                    font-size: 48px;
-                    border-radius: 8px;
-                }
-            }
+            background-color: #EEEEEE; 
+            border-radius: 10px; 
+            font-size: 64px;
+            border: 2px solid #FFFFFF;
         """)
         
         # 文本信息布局
@@ -866,7 +854,14 @@ class RecognitionTab(QWidget):
         self.progress_bar.setValue(100)
         self.timer.stop()
         
-        if result["success"]:
+        # 无论识别成功与否，都显示结果页面和隐藏进度条
+        # 切换到结果页面
+        self.show_result_page()
+            
+        # 延迟隐藏进度条
+        QTimer.singleShot(1000, lambda: self.progress_bar.setVisible(False))
+        
+        if result.get("success", False):
             # 获取识别结果中的文件名或歌曲名
             original_song_name = result["song_name"]
             # 优先使用识别结果中的艺术家信息
@@ -887,10 +882,15 @@ class RecognitionTab(QWidget):
                 # 尝试根据文件名或歌曲名查找匹配项
                 matched_file = None
                 for file_info in all_files:
-                    # 检查文件名或ID是否匹配
-                    if (os.path.basename(file_info["file_path"]) == os.path.basename(result["file_path"]) or
-                        file_info["id"] == original_song_name or 
-                        file_info["file_name"] == original_song_name):
+                    # 检查ID、文件名或歌曲名是否匹配
+                    if (file_info["id"] == original_song_name or 
+                        file_info["file_name"] == original_song_name or
+                        file_info.get("song_name") == original_song_name):
+                        matched_file = file_info
+                        break
+                    
+                    # 如果文件名包含歌曲名，也视为匹配
+                    if original_song_name and original_song_name in file_info.get("file_name", ""):
                         matched_file = file_info
                         break
                 
@@ -988,14 +988,7 @@ class RecognitionTab(QWidget):
                     border-radius: 10px; 
                     font-size: 64px;
                     border: 2px solid #FFFFFF;
-                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
                 """)
-            
-            # 切换到结果页面
-            self.show_result_page()
-            
-            # 延迟隐藏进度条
-            QTimer.singleShot(1000, lambda: self.progress_bar.setVisible(False))
             
             # 保存识别结果信息，用于搜索按钮
             self.current_song = song_name
@@ -1004,6 +997,45 @@ class RecognitionTab(QWidget):
             # 自动跳转到歌曲库并搜索（如果启用了自动搜索）
             if hasattr(self, 'auto_search_enabled') and self.auto_search_enabled:
                 self.search_in_library()
+        else:
+            # 处理识别失败的情况
+            error_message = result.get('error', '未找到匹配的歌曲')
+            
+            # 显示识别失败的提示
+            self.song_label.setText("识别失败")
+            self.artist_label.setText(f"原因: {error_message}")
+            
+            # 隐藏不需要的标签
+            self.album_label.setVisible(False)
+            self.year_label.setVisible(False)
+            self.genre_label.setVisible(False)
+            
+            # 显示置信度
+            confidence = result.get('confidence', 0) * 100
+            self.confidence_label.setText(f"置信度: {confidence:.1f}% (识别失败)")
+            self.confidence_label.setStyleSheet("""
+                font-size: 16px; 
+                color: #FF6B6B; 
+                margin-top: 15px;
+                font-family: 'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
+                font-weight: bold;
+                border-radius: 10px;
+                padding: 3px 8px;
+                background-color: rgba(255, 107, 107, 0.1);
+            """)
+            
+            # 使用默认封面
+            self.cover_label.setText("❌")
+            self.cover_label.setStyleSheet("""
+                background-color: #FFEEEE; 
+                border-radius: 10px; 
+                font-size: 64px;
+                border: 2px solid #FFCCCC;
+            """)
+            
+            # 设置空的搜索关键词
+            self.current_song = ""
+            self.current_artist = ""
     
     def handle_recognition_error(self, error_message):
         """处理识别错误"""

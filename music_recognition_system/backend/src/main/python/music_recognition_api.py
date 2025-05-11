@@ -114,7 +114,7 @@ def recognize_music():
         logger.info(f"成功提取特征: {audio_file.filename}")
         
         # 进行特征匹配
-        match, confidence = match_features(features, feature_db)
+        match, confidence, feature_matches = match_features(features, feature_db)
         
         # 删除临时文件
         os.remove(temp_path)
@@ -129,12 +129,15 @@ def recognize_music():
                 "release_year": match["year"],
                 "genre": match["genre"],
                 "cover_url": match["cover_url"],
-                "confidence": confidence
+                "confidence": confidence,
+                "feature_matches": feature_matches
             })
         else:
             return jsonify({
                 "success": False,
-                "error": "未找到匹配的歌曲"
+                "error": "未找到匹配的歌曲",
+                "confidence": confidence,
+                "feature_matches": feature_matches
             })
     
     except Exception as e:
@@ -144,7 +147,7 @@ def recognize_music():
             "error": f"处理过程中出错: {str(e)}"
         }), 500
 
-def match_features(query_features: Dict[str, Any], db: FeatureDatabase) -> Tuple[Optional[Dict[str, Any]], float]:
+def match_features(query_features: Dict[str, Any], db: FeatureDatabase) -> Tuple[Optional[Dict[str, Any]], float, Dict[str, float]]:
     """
     将查询特征与数据库中的特征进行匹配
     
@@ -153,7 +156,7 @@ def match_features(query_features: Dict[str, Any], db: FeatureDatabase) -> Tuple
         db: 特征数据库
         
     返回:
-        (匹配的歌曲元数据, 置信度)
+        (匹配的歌曲元数据, 置信度, 特征匹配分数)
     """
     try:
         # 获取数据库中的所有文件
@@ -162,74 +165,230 @@ def match_features(query_features: Dict[str, Any], db: FeatureDatabase) -> Tuple
         # 如果数据库为空，使用基于特征的推测
         if not all_files:
             logger.warning("特征数据库为空，尝试使用特征推测匹配")
-            return guess_from_features(query_features)
+            guess_result, confidence, feature_scores = guess_from_features(query_features)
+            return guess_result, confidence, feature_scores
         
         best_match = None
         best_score = 0.0
+        best_feature_scores = {}
         
         # 计算与数据库中每个文件的相似度
         for file_info in all_files:
-            file_id = file_info["id"]
+            file_id = file_info.get("id")
+            if not file_id:
+                continue
+                
             db_features = db.get_feature(file_id)
             
             if not db_features:
                 continue
                 
-            # 计算相似度得分
-            score = calculate_similarity(query_features, db_features)
+            # 计算相似度得分和详细特征分数
+            score, feature_scores = calculate_similarity_with_details(query_features, db_features)
             
             # 更新最佳匹配
             if score > best_score:
                 best_score = score
+                best_feature_scores = feature_scores
+                
                 # 查找元数据
-                file_name = os.path.splitext(file_info["file_name"])[0]
+                file_name = os.path.splitext(file_info.get("file_name", ""))[0]
                 if file_name in SONG_METADATA:
                     best_match = SONG_METADATA[file_name]
                 else:
-                    # 如果找不到元数据，从文件名尝试提取作者信息
-                    author = "未知艺术家"
-                    # 尝试从文件路径或文件名获取作者信息
-                    file_path = file_info.get("file_path", "")
-                    
-                    # 检查文件路径是否包含作者信息
-                    if file_path and os.path.exists(file_path):
-                        try:
-                            # 尝试使用标签库读取MP3文件的作者信息
-                            import mutagen
-                            audio = mutagen.File(file_path, easy=True)
-                            if audio and "artist" in audio:
-                                author = audio["artist"][0]
-                                logger.info(f"从文件标签中读取到作者信息: {author}")
-                        except Exception as e:
-                            logger.warning(f"读取文件标签失败: {str(e)}")
-                    
-                    # 如果还是获取不到作者，尝试从文件名解析
-                    if author == "未知艺术家" and " - " in file_name:
-                        parts = file_name.split(" - ", 1)
-                        if len(parts) > 1:
-                            author = parts[0].strip()
-                            logger.info(f"从文件名中解析到作者信息: {author}")
-                    
-                    # 创建基本信息
+                    # 如果找不到元数据，使用默认值
                     best_match = {
                         "id": file_id,
-                        "name": file_name,
-                        "artist": author,  # 使用提取的作者信息
+                        "name": file_info.get("song_name", "未知歌曲"),
+                        "artist": file_info.get("author", "未知艺术家"),
                         "album": "未知专辑",
                         "year": "",
                         "genre": "未知",
                         "cover_url": ""
                     }
         
-        # 设置置信度阈值
-        if best_score >= 0.7:
-            return best_match, best_score
+        # 设置置信度阈值 - 降低阈值使识别更宽松
+        if best_score >= 0.5:  # 原来是0.7，现在降低到0.5
+            return best_match, best_score, best_feature_scores
         else:
-            return None, best_score
+            return None, best_score, best_feature_scores
             
     except Exception as e:
         logger.error(f"特征匹配失败: {str(e)}", exc_info=True)
-        return None, 0.0
+        return None, 0.0, {}
+
+def calculate_similarity_with_details(query_features: Dict[str, Any], db_features: Dict[str, Any]) -> Tuple[float, Dict[str, float]]:
+    """
+    计算两个特征集之间的相似度，同时返回详细的特征匹配分数
+    
+    参数:
+        query_features: 查询特征
+        db_features: 数据库特征
+        
+    返回:
+        (总相似度得分, 详细特征分数字典)
+    """
+    scores = []
+    feature_scores = {}
+    
+    # 特征权重 - 为不同特征设置不同权重
+    feature_weights = {
+        "mfcc": 1.0,           # MFCC特征 (基本音色)
+        "mfcc_delta": 0.8,     # MFCC一阶导数 (音色变化)
+        "mel": 0.7,            # Mel频谱特征
+        "chroma": 0.9,         # 色度特征 (音调相关)
+        "spectral": 0.6,       # 频谱特征
+        "rhythm": 0.8,         # 节奏特征
+        "tonal": 0.85,         # 调性特征
+        "energy": 0.5,         # 能量分布
+        "fingerprint": 1.2     # 音频指纹 (最高权重)
+    }
+    
+    # 1. 比较MFCC特征
+    if "mfcc_mean" in query_features and "mfcc_mean" in db_features:
+        mfcc_query = np.array(query_features["mfcc_mean"])
+        mfcc_db = np.array(db_features["mfcc_mean"])
+        
+        # 确保两个特征向量长度相同
+        min_length = min(len(mfcc_query), len(mfcc_db))
+        if min_length > 0:
+            mfcc_query = mfcc_query[:min_length]
+            mfcc_db = mfcc_db[:min_length]
+            
+            # 计算余弦相似度
+            mfcc_sim = cosine_similarity(mfcc_query, mfcc_db)
+            feature_scores["mfcc"] = float(mfcc_sim)
+            scores.append(mfcc_sim * feature_weights["mfcc"])
+            
+            # 如果有标准差信息，也计算其相似度
+            if "mfcc_std" in query_features and "mfcc_std" in db_features:
+                std_query = np.array(query_features["mfcc_std"])[:min_length]
+                std_db = np.array(db_features["mfcc_std"])[:min_length]
+                std_sim = cosine_similarity(std_query, std_db)
+                feature_scores["mfcc_std"] = float(std_sim)
+                scores.append(std_sim * feature_weights["mfcc"] * 0.5)
+                
+            # 比较MFCC偏度特征
+            if "mfcc_skew" in query_features and "mfcc_skew" in db_features:
+                skew_query = np.array(query_features["mfcc_skew"])[:min_length]
+                skew_db = np.array(db_features["mfcc_skew"])[:min_length]
+                skew_sim = cosine_similarity(skew_query, skew_db)
+                feature_scores["mfcc_skew"] = float(skew_sim)
+                scores.append(skew_sim * feature_weights["mfcc_delta"])
+    
+    # 2. 比较Mel频谱特征
+    if "mel_mean" in query_features and "mel_mean" in db_features:
+        mel_query = np.array(query_features["mel_mean"])
+        mel_db = np.array(db_features["mel_mean"])
+        
+        min_length = min(len(mel_query), len(mel_db))
+        if min_length > 0:
+            mel_query = mel_query[:min_length]
+            mel_db = mel_db[:min_length]
+            
+            mel_sim = cosine_similarity(mel_query, mel_db)
+            feature_scores["mel"] = float(mel_sim)
+            scores.append(mel_sim * feature_weights["mel"])
+            
+            # 比较Mel频谱偏度
+            if "mel_skew" in query_features and "mel_skew" in db_features:
+                mel_skew_query = np.array(query_features["mel_skew"])[:min_length]
+                mel_skew_db = np.array(db_features["mel_skew"])[:min_length]
+                mel_skew_sim = cosine_similarity(mel_skew_query, mel_skew_db)
+                feature_scores["mel_skew"] = float(mel_skew_sim)
+                scores.append(mel_skew_sim * feature_weights["mel"] * 0.7)
+    
+    # 3. 比较色度特征
+    if "chroma_mean" in query_features and "chroma_mean" in db_features:
+        chroma_query = np.array(query_features["chroma_mean"])
+        chroma_db = np.array(db_features["chroma_mean"])
+        
+        min_length = min(len(chroma_query), len(chroma_db))
+        if min_length > 0:
+            chroma_query = chroma_query[:min_length]
+            chroma_db = chroma_db[:min_length]
+            
+            chroma_sim = cosine_similarity(chroma_query, chroma_db)
+            feature_scores["chroma"] = float(chroma_sim)
+            scores.append(chroma_sim * feature_weights["chroma"])
+    
+    # 4. 比较谱质心轮廓特征
+    if "centroid_profile" in query_features and "centroid_profile" in db_features:
+        profile_query = np.array(query_features["centroid_profile"])
+        profile_db = np.array(db_features["centroid_profile"])
+        
+        min_length = min(len(profile_query), len(profile_db))
+        if min_length > 0:
+            profile_query = profile_query[:min_length]
+            profile_db = profile_db[:min_length]
+            
+            profile_sim = cosine_similarity(profile_query, profile_db)
+            feature_scores["spectral_profile"] = float(profile_sim)
+            scores.append(profile_sim * feature_weights["spectral"])
+    
+    # 5. 比较节奏特征
+    if "tempo" in query_features and "tempo" in db_features:
+        # 计算节奏差异 - 使用相对差异
+        query_tempo = query_features["tempo"]
+        db_tempo = db_features["tempo"]
+        
+        # 节奏相似度 - 考虑音乐通常在73-180 BPM之间
+        tempo_diff = abs(query_tempo - db_tempo)
+        tempo_range = 180 - 73
+        tempo_sim = max(0.0, 1.0 - tempo_diff / tempo_range)
+        feature_scores["tempo"] = float(tempo_sim)
+        scores.append(tempo_sim * feature_weights["rhythm"] * 0.5)
+        
+        # 节奏脉冲清晰度
+        if "pulse_clarity" in query_features and "pulse_clarity" in db_features:
+            pc_query = query_features["pulse_clarity"]
+            pc_db = db_features["pulse_clarity"]
+            pc_sim = 1.0 - min(1.0, abs(pc_query - pc_db) / max(pc_query, pc_db, 0.001))
+            feature_scores["pulse_clarity"] = float(pc_sim)
+            scores.append(pc_sim * feature_weights["rhythm"] * 0.3)
+    
+    # 6. 比较调性特征
+    if "tonal_features_mean" in query_features and "tonal_features_mean" in db_features:
+        tonal_query = np.array(query_features["tonal_features_mean"])
+        tonal_db = np.array(db_features["tonal_features_mean"])
+        
+        min_length = min(len(tonal_query), len(tonal_db))
+        if min_length > 0:
+            tonal_query = tonal_query[:min_length]
+            tonal_db = tonal_db[:min_length]
+            
+            tonal_sim = cosine_similarity(tonal_query, tonal_db)
+            feature_scores["tonal"] = float(tonal_sim)
+            scores.append(tonal_sim * feature_weights["tonal"])
+    
+    # 7. 比较能量分布特征
+    if "energy_distribution" in query_features and "energy_distribution" in db_features:
+        energy_query = np.array(query_features["energy_distribution"])
+        energy_db = np.array(db_features["energy_distribution"])
+        
+        min_length = min(len(energy_query), len(energy_db))
+        if min_length > 0:
+            energy_query = energy_query[:min_length]
+            energy_db = energy_db[:min_length]
+            
+            energy_sim = cosine_similarity(energy_query, energy_db)
+            feature_scores["energy"] = float(energy_sim)
+            scores.append(energy_sim * feature_weights["energy"])
+    
+    # 8. 比较指纹特征 (最重要的特征)
+    if "fingerprint" in query_features and "fingerprint" in db_features:
+        fp_sim = fingerprint_similarity(query_features["fingerprint"], db_features["fingerprint"])
+        feature_scores["fingerprint"] = float(fp_sim)
+        scores.append(fp_sim * feature_weights["fingerprint"])
+    
+    # 如果没有任何得分，返回0
+    if not scores:
+        return 0.0, feature_scores
+    
+    # 计算最终相似度得分
+    final_score = sum(scores) / len(scores)
+    
+    return final_score, feature_scores
 
 def calculate_similarity(query_features: Dict[str, Any], db_features: Dict[str, Any]) -> float:
     """
@@ -242,81 +401,77 @@ def calculate_similarity(query_features: Dict[str, Any], db_features: Dict[str, 
     返回:
         相似度得分 (0.0 到 1.0 之间)
     """
-    scores = []
-    
-    # 1. 比较MFCC特征
-    if "mfcc_mean" in query_features and "mfcc_mean" in db_features:
-        mfcc_query = np.array(query_features["mfcc_mean"])
-        mfcc_db = np.array(db_features["mfcc_mean"])
-        
-        # 计算余弦相似度
-        mfcc_sim = cosine_similarity(mfcc_query, mfcc_db)
-        scores.append(mfcc_sim * 0.4)  # MFCC特征权重较高
-    
-    # 2. 比较梅尔频谱特征
-    if "mel_mean" in query_features and "mel_mean" in db_features:
-        mel_query = np.array(query_features["mel_mean"])
-        mel_db = np.array(db_features["mel_mean"])
-        
-        mel_sim = cosine_similarity(mel_query, mel_db)
-        scores.append(mel_sim * 0.3)
-    
-    # 3. 比较色度特征
-    if "chroma_mean" in query_features and "chroma_mean" in db_features:
-        chroma_query = np.array(query_features["chroma_mean"])
-        chroma_db = np.array(db_features["chroma_mean"])
-        
-        chroma_sim = cosine_similarity(chroma_query, chroma_db)
-        scores.append(chroma_sim * 0.2)
-    
-    # 4. 比较谱质心特征
-    if "spectral_centroid_mean" in query_features and "spectral_centroid_mean" in db_features:
-        centroid_diff = abs(query_features["spectral_centroid_mean"] - db_features["spectral_centroid_mean"])
-        max_centroid = max(query_features["spectral_centroid_mean"], db_features["spectral_centroid_mean"])
-        centroid_sim = 1.0 - min(centroid_diff / max_centroid, 1.0) if max_centroid > 0 else 0
-        scores.append(centroid_sim * 0.1)
-    
-    # 5. 比较指纹特征（如果存在）
-    if "fingerprint" in query_features and "fingerprint" in db_features:
-        fp_sim = fingerprint_similarity(query_features["fingerprint"], db_features["fingerprint"])
-        scores.append(fp_sim * 0.5)  # 指纹特征权重最高
-    
-    # 如果没有足够的特征比较
-    if not scores:
-        return 0.0
-    
-    # 返回加权平均分数
-    return sum(scores) / sum(score_weight for _, score_weight in zip(scores, [0.4, 0.3, 0.2, 0.1, 0.5]))
+    # 调用有详细信息的函数但只返回总分
+    score, _ = calculate_similarity_with_details(query_features, db_features)
+    return score
 
 def fingerprint_similarity(fp1: List[List[int]], fp2: List[List[int]]) -> float:
     """
-    计算两个指纹之间的相似度
+    计算两个音频指纹的相似度
     
     参数:
-        fp1: 第一个指纹
-        fp2: 第二个指纹
+        fp1, fp2: 音频指纹数据（二维二进制矩阵）
         
     返回:
         相似度得分 (0.0 到 1.0 之间)
     """
-    # 确保两个指纹的形状兼容
-    min_rows = min(len(fp1), len(fp2))
-    min_cols = min(len(fp1[0]) if fp1 and fp1[0] else 0, len(fp2[0]) if fp2 and fp2[0] else 0)
-    
-    if min_rows == 0 or min_cols == 0:
+    try:
+        # 确保两个指纹有相同的维度
+        min_rows = min(len(fp1), len(fp2))
+        min_cols = min(len(fp1[0]) if fp1 else 0, len(fp2[0]) if fp2 else 0)
+        
+        if min_rows == 0 or min_cols == 0:
+            return 0.0
+        
+        # 计算汉明距离（相同位置不同值的数量）
+        hamming_distance = 0
+        total_bits = 0
+        
+        for i in range(min_rows):
+            for j in range(min_cols):
+                if fp1[i][j] != fp2[i][j]:
+                    hamming_distance += 1
+                total_bits += 1
+        
+        # 将汉明距离转换为相似度得分
+        if total_bits == 0:
+            return 0.0
+            
+        # 使用加权汉明距离计算 - 中心区域权重更高
+        similarity = 1.0 - (hamming_distance / total_bits)
+        
+        # 增加局部滑动窗口匹配以处理时间轴上的轻微偏移
+        # 在水平方向上尝试多个偏移位置并取最大相似度
+        max_offset = min(5, min_cols // 10)  # 最大偏移量为列数的10%或5，取较小值
+        offset_similarities = []
+        
+        for offset in range(-max_offset, max_offset + 1):
+            if offset == 0:  # 已经计算过中心对齐的情况
+                offset_similarities.append(similarity)
+                continue
+                
+            offset_hamming = 0
+            offset_total = 0
+            
+            for i in range(min_rows):
+                for j in range(max(0, -offset), min(min_cols, min_cols - offset)):
+                    j2 = j + offset
+                    if 0 <= j2 < min_cols:
+                        if fp1[i][j] != fp2[i][j2]:
+                            offset_hamming += 1
+                        offset_total += 1
+            
+            if offset_total > 0:
+                offset_similarities.append(1.0 - (offset_hamming / offset_total))
+        
+        # 使用最大相似度作为最终结果
+        best_similarity = max(offset_similarities) if offset_similarities else similarity
+        
+        return best_similarity
+        
+    except Exception as e:
+        logger.error(f"计算指纹相似度出错: {str(e)}")
         return 0.0
-    
-    # 计算重叠的二进制位数
-    match_count = 0
-    total_bits = min_rows * min_cols
-    
-    for i in range(min_rows):
-        for j in range(min_cols):
-            if fp1[i][j] == fp2[i][j]:
-                match_count += 1
-    
-    # 返回相似度
-    return match_count / total_bits
 
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     """
@@ -347,23 +502,36 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     # 将结果转换到0-1范围
     return (cos_sim + 1) / 2
 
-def guess_from_features(features: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], float]:
+def guess_from_features(features: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], float, Dict[str, float]]:
     """
-    从特征中猜测歌曲（当数据库为空时使用）
+    根据特征猜测可能的歌曲信息
     
     参数:
-        features: 音频特征
-        
+        features: 提取的特征
+    
     返回:
-        (猜测的歌曲元数据, 置信度)
+        (猜测的歌曲元数据, 置信度, 特征评分)
     """
-    import random
+    # 创建一个空的特征评分字典
+    feature_scores = {}
     
-    # 随机选择一首歌，但赋予较低的置信度
-    song_names = list(SONG_METADATA.keys())
-    selected_song = SONG_METADATA[random.choice(song_names)]
+    # 创建默认的猜测元数据
+    guessed_metadata = {
+        "id": "guess_" + str(hash(str(time.time())) % 10000),
+        "name": "未识别歌曲",
+        "artist": "未知艺术家",
+        "album": "未知专辑",
+        "year": "",
+        "genre": "未知",
+        "cover_url": ""
+    }
     
-    return selected_song, 0.6
+    # 尝试从特征推断一些信息
+    # 这里可以添加基于音频特征的推断，而不是文件名
+    
+    feature_scores["feature_based"] = 0.3
+    
+    return guessed_metadata, 0.3, feature_scores
 
 @app.route('/api/health', methods=['GET'])
 def health_check():

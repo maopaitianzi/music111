@@ -3,8 +3,8 @@
     "file_name": "1520746053.mp3",
     "file_path": "C:/Users/86181/Desktop/音乐识别系统/Music\\1520746053.mp3",
     "duration": 206.92,
-    "feature_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\features\\ef02d9f7e0c92c7292513c7369a38912.pkl",
-    "added_time": "2025-05-11 14:02:16",
+    "feature_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\features\\ef02d9f7e0c92c7292513c7369a38912.pkl",
+    "added_time": "2025-05-11 17:01:56",
     "song_name": "1520746053",
     "author": "",
     "cover_path": ""
@@ -13,8 +13,8 @@
     "file_name": "M500002MTvXX1ZJ62w.mp3",
     "file_path": "C:/Users/86181/Desktop/音乐识别系统/Music\\M500002MTvXX1ZJ62w.mp3",
     "duration": 220.50995464852608,
-    "feature_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\features\\163c67d46f0be84075050a34c3745bf6.pkl",
-    "added_time": "2025-05-11 14:02:18",
+    "feature_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\features\\163c67d46f0be84075050a34c3745bf6.pkl",
+    "added_time": "2025-05-11 17:01:59",
     "song_name": "かなしばりに遭ったら",
     "author": "あばらや",
     "cover_path": ""
@@ -23,8 +23,8 @@
     "file_name": "M8000009LQin3AvjLq.mp3",
     "file_path": "C:/Users/86181/Desktop/音乐识别系统/Music\\M8000009LQin3AvjLq.mp3",
     "duration": 180.08532879818594,
-    "feature_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\features\\2d8c03dcb98d2778bc8dd01123efb84f.pkl",
-    "added_time": "2025-05-11 14:02:20",
+    "feature_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\features\\2d8c03dcb98d2778bc8dd01123efb84f.pkl",
+    "added_time": "2025-05-11 17:02:02",
     "song_name": "妄想哀歌 (feat. 初音ミク & 可不)",
     "author": "MIMI/初音ミク/可不",
     "cover_path": ""
@@ -33,8 +33,8 @@
     "file_name": "M80000122UQ70Dg80E.mp3",
     "file_path": "C:/Users/86181/Desktop/音乐识别系统/Music\\M80000122UQ70Dg80E.mp3",
     "duration": 155.0,
-    "feature_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\features\\616cc927d3fbe75be4c02f8f6400e4af.pkl",
-    "added_time": "2025-05-11 14:02:21",
+    "feature_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\features\\616cc927d3fbe75be4c02f8f6400e4af.pkl",
+    "added_time": "2025-05-11 17:02:05",
     "song_name": "天使の涙 (feat. 初音ミク)",
     "author": "MIMI/初音ミク",
     "cover_path": ""
@@ -43,8 +43,8 @@
     "file_name": "M8000022sSgq2VgAAE.mp3",
     "file_path": "C:/Users/86181/Desktop/音乐识别系统/Music\\M8000022sSgq2VgAAE.mp3",
     "duration": 192.0,
-    "feature_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\features\\aa6bde8f432a00d081dd9087972c1209.pkl",
-    "added_time": "2025-05-11 14:02:23",
+    "feature_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\features\\aa6bde8f432a00d081dd9087972c1209.pkl",
+    "added_time": "2025-05-11 17:02:07",
     "song_name": "心を刺す言葉だけ (feat. 初音ミク & 可不)",
     "author": "MIMI/初音ミク/可不",
     "cover_path": ""
@@ -53,8 +53,8 @@
     "file_name": "MIMI - 『夜と幸せ』(feat.詩の出素。)-yt.savetube.me.mp3",
     "file_path": "C:/Users/86181/Desktop/音乐识别系统/Music\\MIMI - 『夜と幸せ』(feat.詩の出素。)-yt.savetube.me.mp3",
     "duration": 159.1379375,
-    "feature_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\features\\a785bce8c998188b637f5a051af25e15.pkl",
-    "added_time": "2025-05-11 14:02:25",
+    "feature_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\features\\a785bce8c998188b637f5a051af25e15.pkl",
+    "added_time": "2025-05-11 17:02:10",
     "song_name": "MIMI - 『夜と幸せ』(feat.詩の出素。)-yt.savetube.me",
     "author": "",
     "cover_path": ""
@@ -63,9 +63,19 @@
     "file_name": "午夜DJ.mp3",
     "file_path": "C:/Users/86181/Desktop/音乐识别系统/Music\\午夜DJ.mp3",
     "duration": 0,
-    "feature_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\features\\55322c38a40b46e78bb40a8af47e373a.pkl",
-    "added_time": "2025-05-11 14:02:27",
+    "feature_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\features\\55322c38a40b46e78bb40a8af47e373a.pkl",
+    "added_time": "2025-05-11 17:02:13",
     "song_name": "午夜DJ",
+    "author": "",
+    "cover_path": ""
+  },
+  "81c6c9b9b3c6d1695a404d7e16635dc6": {
+    "file_name": "db_add_1746954442.wav",
+    "file_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system\\backend\\src\\main\\python\\../../../temp\\db_add_1746954442.wav",
+    "duration": 0,
+    "feature_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\features\\81c6c9b9b3c6d1695a404d7e16635dc6.pkl",
+    "added_time": "2025-05-11 17:07:27",
+    "song_name": "",
     "author": "",
     "cover_path": ""
   }
