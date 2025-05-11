@@ -22,8 +22,9 @@ try:
     print(f"项目根目录: {project_root}")
     print(f"Python路径: {sys.path}")
     
-    # 创建临时目录
-    os.makedirs(os.path.join(current_dir, "temp"), exist_ok=True)
+    # 创建临时目录，使用相对路径
+    temp_dir = os.path.join(current_dir, "temp")
+    os.makedirs(temp_dir, exist_ok=True)
     
     # 运行Flask应用
     app.run(debug=True, host='0.0.0.0', port=5000)

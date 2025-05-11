@@ -212,15 +212,32 @@ class FeatureExtractionThread(QThread):
                         error_count += 1
                         continue
                     
-                    # 添加歌曲名
-                    if self.use_filename:
+                    # 尝试从音频文件元数据中提取歌曲名和艺术家信息
+                    try:
+                        metadata = self.extractor._extract_metadata(audio_file)
+                        
+                        # 使用元数据中的标题作为歌曲名
+                        if metadata and metadata.get("title"):
+                            features["song_name"] = metadata.get("title")
+                            print(f"从元数据提取歌曲名: {features['song_name']}")
+                            
+                            # 提取艺术家信息
+                            if metadata.get("artist"):
+                                features["author"] = metadata.get("artist")
+                                print(f"从元数据提取艺术家: {features['author']}")
+                    except Exception as e:
+                        print(f"提取元数据失败: {str(e)}")
+                        # 提取失败则继续使用默认方式
+                    
+                    # 如果元数据中没有提取到歌曲名，且启用了使用文件名选项，则使用文件名作为歌曲名
+                    if not features.get("song_name") and self.use_filename:
                         # 使用文件名作为歌曲名（去除扩展名）
                         base_name = os.path.basename(audio_file)
                         song_name = os.path.splitext(base_name)[0]
                         features["song_name"] = song_name
                     
-                    # 添加作者
-                    if self.default_author:
+                    # 添加默认作者（如果元数据中没有提取到，且用户指定了默认作者）
+                    if not features.get("author") and self.default_author:
                         features["author"] = self.default_author
                     
                     # 添加时间戳
@@ -499,7 +516,7 @@ class FeatureLibraryTab(QWidget):
         # 特征列表表格
         self.feature_table = QTableWidget()
         self.feature_table.setColumnCount(8)
-        self.feature_table.setHorizontalHeaderLabels(["ID", "封面", "文件名", "歌曲名", "作者", "文件路径", "时长(秒)", "添加时间"])
+        self.feature_table.setHorizontalHeaderLabels(["ID", "封面", "歌曲名", "文件名", "作者", "文件路径", "时长(秒)", "添加时间"])
         self.feature_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.feature_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.feature_table.verticalHeader().setVisible(False)
@@ -764,18 +781,32 @@ class FeatureLibraryTab(QWidget):
                         file_path = info.get("file_path", "")
                         
                         if file_path and os.path.exists(file_path):
-                            # 从文件名中提取歌曲名
-                            file_name = info.get("file_name", "")
-                            song_name = os.path.splitext(file_name)[0] if file_name else ""
-                            
-                            # 使用提取器获取元数据
+                            # 尝试从音频文件中提取元数据
                             try:
                                 extractor = AudioFeatureExtractor()
                                 metadata = extractor._extract_metadata(file_path)
+                                
+                                # 提取歌曲标题
+                                song_name = ""
                                 if metadata and metadata.get("title"):
-                                    song_name = metadata.get("title", "")
-                                author = metadata.get("artist", "")
-                            except:
+                                    song_name = metadata.get("title")
+                                    print(f"从元数据提取歌曲名: {song_name}")
+                                
+                                # 如果无法从元数据中提取，使用文件名作为备选
+                                if not song_name:
+                                    file_name = info.get("file_name", "")
+                                    song_name = os.path.splitext(file_name)[0] if file_name else ""
+                                    print(f"使用文件名作为歌曲名: {song_name}")
+                                
+                                # 提取艺术家
+                                author = metadata.get("artist", "") if metadata else ""
+                                if author:
+                                    print(f"从元数据提取艺术家: {author}")
+                            except Exception as e:
+                                print(f"提取元数据失败: {str(e)}")
+                                # 提取失败，使用文件名和默认作者
+                                file_name = info.get("file_name", "")
+                                song_name = os.path.splitext(file_name)[0] if file_name else ""
                                 author = ""
                             
                             # 更新特征数据
@@ -846,11 +877,11 @@ class FeatureLibraryTab(QWidget):
         """更新特征表格数据"""
         try:
             # 确保表格的列数正确
-            num_columns = 8  # 8列: ID, 封面, 文件名, 歌曲名, 作者, 文件路径, 时长, 添加时间
+            num_columns = 8  # 8列: ID, 封面, 歌曲名, 文件名, 作者, 文件路径, 时长, 添加时间
             if self.feature_table.columnCount() != num_columns:
                 print(f"调整表格列数: 从 {self.feature_table.columnCount()} 到 {num_columns}")
                 self.feature_table.setColumnCount(num_columns)
-                self.feature_table.setHorizontalHeaderLabels(["ID", "封面", "文件名", "歌曲名", "作者", "文件路径", "时长(秒)", "添加时间"])
+                self.feature_table.setHorizontalHeaderLabels(["ID", "封面", "歌曲名", "文件名", "作者", "文件路径", "时长(秒)", "添加时间"])
             
             # 清空表格
             self.feature_table.setRowCount(0)
@@ -965,18 +996,18 @@ class FeatureLibraryTab(QWidget):
                     
                     self.feature_table.setItem(i, 1, cover_item)
                     
-                    # 设置文件名
-                    file_name = str(feature.get("file_name", ""))
-                    name_item = QTableWidgetItem(file_name)
-                    self.feature_table.setItem(i, 2, name_item)
-                    
                     # 设置歌曲名
                     song_name = feature.get("song_name", "")
+                    file_name = str(feature.get("file_name", ""))
                     if not song_name and file_name:
                         # 如果歌曲名为空，使用文件名（不带扩展名）作为默认歌曲名
                         song_name = os.path.splitext(file_name)[0]
                     song_name_item = QTableWidgetItem(str(song_name))
-                    self.feature_table.setItem(i, 3, song_name_item)
+                    self.feature_table.setItem(i, 2, song_name_item)
+                    
+                    # 设置文件名
+                    name_item = QTableWidgetItem(file_name)
+                    self.feature_table.setItem(i, 3, name_item)
                     
                     # 设置作者
                     author = feature.get("author", "")
@@ -1005,9 +1036,9 @@ class FeatureLibraryTab(QWidget):
             
             # 设置列宽
             self.feature_table.setColumnWidth(0, 100)   # ID列
-            self.feature_table.setColumnWidth(1, 70)    # 封面列 - 增加宽度
-            self.feature_table.setColumnWidth(2, 200)   # 文件名列
-            self.feature_table.setColumnWidth(3, 200)   # 歌曲名列
+            self.feature_table.setColumnWidth(1, 70)    # 封面列
+            self.feature_table.setColumnWidth(2, 200)   # 歌曲名列
+            self.feature_table.setColumnWidth(3, 200)   # 文件名列
             self.feature_table.setColumnWidth(4, 150)   # 作者列
             self.feature_table.setColumnWidth(6, 100)   # 时长列
             self.feature_table.setColumnWidth(7, 180)   # 添加时间列
@@ -1066,6 +1097,11 @@ class FeatureLibraryTab(QWidget):
             edit_action = QAction("编辑歌曲信息", self)
             edit_action.triggered.connect(self.edit_song_info)
             context_menu.addAction(edit_action)
+            
+            # 添加从元数据更新选项
+            update_from_metadata_action = QAction("从元数据更新信息", self)
+            update_from_metadata_action.triggered.connect(self.update_from_metadata)
+            context_menu.addAction(update_from_metadata_action)
             
             # 如果选中多行，显示批量删除选项
             if selected_count > 1:
@@ -1958,3 +1994,125 @@ class FeatureLibraryTab(QWidget):
         except Exception as e:
             print(f"创建默认封面失败: {str(e)}")
             return None
+
+    def update_from_metadata(self):
+        """从选中音频文件的元数据中更新歌曲信息"""
+        selected_rows = set(item.row() for item in self.feature_table.selectedItems())
+        
+        if not selected_rows:
+            return
+            
+        # 确认操作
+        confirm = QMessageBox.question(
+            self, 
+            "确认更新", 
+            f"确定要从元数据重新提取所选 {len(selected_rows)} 个文件的歌曲信息吗？\n这将覆盖当前的歌曲名和艺术家信息。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, 
+            QMessageBox.StandardButton.No
+        )
+        
+        if confirm == QMessageBox.StandardButton.No:
+            return
+        
+        # 显示进度对话框
+        progress_dialog = QDialog(self)
+        progress_dialog.setWindowTitle("正在更新")
+        progress_dialog.setFixedSize(400, 100)
+        progress_layout = QVBoxLayout(progress_dialog)
+        
+        progress_label = QLabel(f"正在更新 {len(selected_rows)} 个文件的信息...")
+        progress_bar = QProgressBar()
+        progress_bar.setRange(0, len(selected_rows))
+        progress_bar.setValue(0)
+        
+        progress_layout.addWidget(progress_label)
+        progress_layout.addWidget(progress_bar)
+        
+        progress_dialog.show()
+        QApplication.processEvents()
+        
+        # 收集要更新的文件ID
+        success_count = 0
+        failed_count = 0
+        
+        for i, row in enumerate(selected_rows):
+            try:
+                # 获取文件ID和路径
+                file_id = self.feature_table.item(row, 0).text()
+                file_path = self.feature_table.item(row, 5).text()
+                
+                # 检查文件是否存在
+                if file_path and os.path.exists(file_path):
+                    # 提取元数据
+                    extractor = AudioFeatureExtractor()
+                    metadata = extractor._extract_metadata(file_path)
+                    
+                    # 获取歌曲名和艺术家信息
+                    song_name = ""
+                    author = ""
+                    
+                    # 从元数据中提取歌曲名
+                    if metadata and metadata.get("title"):
+                        song_name = metadata.get("title")
+                        print(f"从元数据提取歌曲名: {song_name}")
+                    
+                    # 如果元数据中没有歌曲名，保留原有的或使用文件名
+                    if not song_name:
+                        current_song_name = self.feature_table.item(row, 2).text()
+                        if current_song_name:
+                            song_name = current_song_name
+                        else:
+                            file_name = os.path.basename(file_path)
+                            song_name = os.path.splitext(file_name)[0]
+                        print(f"使用已有歌曲名或文件名: {song_name}")
+                    
+                    # 从元数据中提取艺术家
+                    if metadata and metadata.get("artist"):
+                        author = metadata.get("artist")
+                        print(f"从元数据提取艺术家: {author}")
+                    
+                    # 更新数据库
+                    update_info = {
+                        "song_name": song_name,
+                        "author": author,
+                        "update_feature": True
+                    }
+                    
+                    if self.db.update_feature_info(file_id, update_info):
+                        success_count += 1
+                        print(f"已更新 {file_id}: {song_name} - {author}")
+                    else:
+                        failed_count += 1
+                        print(f"更新 {file_id} 失败")
+                else:
+                    failed_count += 1
+                    print(f"文件不存在: {file_path}")
+            except Exception as e:
+                failed_count += 1
+                print(f"更新文件信息失败: {str(e)}")
+                traceback.print_exc()
+            
+            # 更新进度
+            progress_bar.setValue(i + 1)
+            progress_label.setText(f"正在更新: {i+1}/{len(selected_rows)}")
+            QApplication.processEvents()
+        
+        # 关闭进度对话框
+        progress_dialog.close()
+        
+        # 刷新表格
+        self.refresh_feature_list()
+        
+        # 显示结果
+        if success_count > 0:
+            QMessageBox.information(
+                self, 
+                "更新完成", 
+                f"成功更新了 {success_count} 个文件的信息，失败 {failed_count} 个。"
+            )
+        else:
+            QMessageBox.warning(
+                self, 
+                "更新失败", 
+                f"没有成功更新任何文件，失败 {failed_count} 个。"
+            )

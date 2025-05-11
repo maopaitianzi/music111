@@ -6,7 +6,9 @@ import time
 def start_backend_api():
     """启动后端API服务"""
     print("正在启动后端API服务...")
-    backend_dir = os.path.join(os.getcwd(), "music_recognition_system", "backend")
+    # 使用相对路径获取后端目录
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    backend_dir = os.path.join(current_dir, "music_recognition_system", "backend")
     cmd = ["python", "run_api.py"]
     
     # 使用Popen启动后台进程
@@ -25,7 +27,9 @@ def start_backend_api():
 def start_desktop_app():
     """启动桌面应用"""
     print("正在启动桌面应用...")
-    app_dir = os.path.join(os.getcwd(), "music_recognition_system", "frontend", "desktop_app")
+    # 使用相对路径获取桌面应用目录
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    app_dir = os.path.join(current_dir, "music_recognition_system", "frontend", "desktop_app")
     cmd = ["python", "run.py"]
     
     try:
@@ -45,9 +49,9 @@ def refresh_feature_database():
     print("正在刷新特征库数据结构...")
     
     try:
-        # 获取特征库路径
-        workspace_root = os.getcwd()
-        database_path = os.path.join(workspace_root, "music_recognition_system/database/music_features_db")
+        # 获取特征库路径，使用相对路径
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        database_path = os.path.join(current_dir, "music_recognition_system/database/music_features_db")
         
         # 验证数据库目录是否存在
         if not os.path.exists(database_path):

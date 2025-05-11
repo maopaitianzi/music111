@@ -30,7 +30,13 @@ class AudioRecorder(QObject):
         self.stream = None
         self.frames = []
         self.record_thread = None
-        self.output_dir = os.path.join(os.path.expanduser("~"), "Music", "Recordings")
+        
+        # 使用相对于项目的路径存储录音
+        current_script_dir = os.path.dirname(os.path.abspath(__file__))
+        # 定位到项目根目录（假设结构是music_recognition_system/frontend/desktop_app/src/services/）
+        project_root = os.path.abspath(os.path.join(current_script_dir, "../../../../../"))
+        # 在项目根目录中创建录音目录
+        self.output_dir = os.path.join(project_root, "temp", "recordings")
         os.makedirs(self.output_dir, exist_ok=True)
         
         # 最大录制时间（秒）

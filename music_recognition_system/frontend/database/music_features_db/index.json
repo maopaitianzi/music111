@@ -1,51 +1,51 @@
 {
   "ef02d9f7e0c92c7292513c7369a38912": {
     "file_name": "1520746053.mp3",
-    "file_path": "C:/Users/86181/Desktop/音乐识别系统/Music\\1520746053.mp3",
+    "file_path": "../../Music/1520746053.mp3",
     "duration": 206.92,
-    "feature_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system\\frontend\\desktop_app\\src\\tabs\\../../../database/music_features_db\\features\\ef02d9f7e0c92c7292513c7369a38912.pkl",
+    "feature_path": "../../../database/music_features_db/features/ef02d9f7e0c92c7292513c7369a38912.pkl",
     "added_time": "2025-05-07 11:27:51"
   },
   "163c67d46f0be84075050a34c3745bf6": {
     "file_name": "M500002MTvXX1ZJ62w.mp3",
-    "file_path": "C:/Users/86181/Desktop/音乐识别系统/Music\\M500002MTvXX1ZJ62w.mp3",
+    "file_path": "../../Music/M500002MTvXX1ZJ62w.mp3",
     "duration": 220.50997732426305,
-    "feature_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system\\frontend\\desktop_app\\src\\tabs\\../../../database/music_features_db\\features\\163c67d46f0be84075050a34c3745bf6.pkl",
+    "feature_path": "../../../database/music_features_db/features/163c67d46f0be84075050a34c3745bf6.pkl",
     "added_time": "2025-05-07 11:27:53"
   },
   "2d8c03dcb98d2778bc8dd01123efb84f": {
     "file_name": "M8000009LQin3AvjLq.mp3",
-    "file_path": "C:/Users/86181/Desktop/音乐识别系统/Music\\M8000009LQin3AvjLq.mp3",
+    "file_path": "../../Music/M8000009LQin3AvjLq.mp3",
     "duration": 180.0853514739229,
-    "feature_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system\\frontend\\desktop_app\\src\\tabs\\../../../database/music_features_db\\features\\2d8c03dcb98d2778bc8dd01123efb84f.pkl",
+    "feature_path": "../../../database/music_features_db/features/2d8c03dcb98d2778bc8dd01123efb84f.pkl",
     "added_time": "2025-05-07 11:27:55"
   },
   "616cc927d3fbe75be4c02f8f6400e4af": {
     "file_name": "M80000122UQ70Dg80E.mp3",
-    "file_path": "C:/Users/86181/Desktop/音乐识别系统/Music\\M80000122UQ70Dg80E.mp3",
+    "file_path": "../../Music/M80000122UQ70Dg80E.mp3",
     "duration": 155.0,
-    "feature_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system\\frontend\\desktop_app\\src\\tabs\\../../../database/music_features_db\\features\\616cc927d3fbe75be4c02f8f6400e4af.pkl",
+    "feature_path": "../../../database/music_features_db/features/616cc927d3fbe75be4c02f8f6400e4af.pkl",
     "added_time": "2025-05-07 11:27:56"
   },
   "aa6bde8f432a00d081dd9087972c1209": {
     "file_name": "M8000022sSgq2VgAAE.mp3",
-    "file_path": "C:/Users/86181/Desktop/音乐识别系统/Music\\M8000022sSgq2VgAAE.mp3",
+    "file_path": "../../Music/M8000022sSgq2VgAAE.mp3",
     "duration": 192.0,
-    "feature_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system\\frontend\\desktop_app\\src\\tabs\\../../../database/music_features_db\\features\\aa6bde8f432a00d081dd9087972c1209.pkl",
+    "feature_path": "../../../database/music_features_db/features/aa6bde8f432a00d081dd9087972c1209.pkl",
     "added_time": "2025-05-07 11:27:58"
   },
   "a785bce8c998188b637f5a051af25e15": {
     "file_name": "MIMI - 『夜と幸せ』(feat.詩の出素。)-yt.savetube.me.mp3",
-    "file_path": "C:/Users/86181/Desktop/音乐识别系统/Music\\MIMI - 『夜と幸せ』(feat.詩の出素。)-yt.savetube.me.mp3",
+    "file_path": "../../Music/MIMI - 『夜と幸せ』(feat.詩の出素。)-yt.savetube.me.mp3",
     "duration": 159.13795918367347,
-    "feature_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system\\frontend\\desktop_app\\src\\tabs\\../../../database/music_features_db\\features\\a785bce8c998188b637f5a051af25e15.pkl",
+    "feature_path": "../../../database/music_features_db/features/a785bce8c998188b637f5a051af25e15.pkl",
     "added_time": "2025-05-07 11:28:00"
   },
   "a0e2eb3edb5b3d0523a707ccfa03dd17": {
     "file_name": "王绎龙 - 午夜DJ.mp3",
-    "file_path": "C:/Users/86181/Desktop/音乐识别系统/Music\\王绎龙 - 午夜DJ.mp3",
+    "file_path": "../../Music/王绎龙 - 午夜DJ.mp3",
     "duration": 291.68063492063493,
-    "feature_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system\\frontend\\desktop_app\\src\\tabs\\../../../database/music_features_db\\features\\a0e2eb3edb5b3d0523a707ccfa03dd17.pkl",
+    "feature_path": "../../../database/music_features_db/features/a0e2eb3edb5b3d0523a707ccfa03dd17.pkl",
     "added_time": "2025-05-07 11:28:02"
   }
 }
