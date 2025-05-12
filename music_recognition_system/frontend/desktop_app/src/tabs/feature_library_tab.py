@@ -1237,7 +1237,7 @@ class FeatureLibraryTab(QWidget):
             
         # 获取选中行的文件路径
         row = selected_items[0].row()
-        file_path = self.feature_table.item(row, 2).text()
+        file_path = self.feature_table.item(row, 5).text()
         
         if not file_path or not os.path.exists(file_path):
             QMessageBox.warning(
