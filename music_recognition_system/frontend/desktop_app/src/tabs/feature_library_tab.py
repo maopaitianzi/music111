@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                             QLabel, QFileDialog, QProgressBar, QListWidget, QListWidgetItem,
                             QMessageBox, QLineEdit, QComboBox, QTableWidget, QTableWidgetItem, 
                             QHeaderView, QAbstractItemView, QTabWidget, QMenu, QDialog, QFormLayout,
-                            QDialogButtonBox, QCheckBox, QSplitter)
+                            QDialogButtonBox, QCheckBox, QSplitter, QMainWindow)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QDir, QTimer, QSize
 from PyQt6.QtGui import QFont, QPalette, QColor, QAction, QCursor, QPixmap, QImage, QPainter, QPen, QIcon
 import os
@@ -1103,6 +1103,11 @@ class FeatureLibraryTab(QWidget):
             update_from_metadata_action.triggered.connect(self.update_from_metadata)
             context_menu.addAction(update_from_metadata_action)
             
+            # 添加收藏功能
+            favorite_action = QAction("添加到收藏", self)
+            favorite_action.triggered.connect(self.add_to_favorite)
+            context_menu.addAction(favorite_action)
+            
             # 如果选中多行，显示批量删除选项
             if selected_count > 1:
                 delete_action = QAction(f"删除所选({selected_count}项)", self)
@@ -1127,6 +1132,79 @@ class FeatureLibraryTab(QWidget):
         
         # 显示菜单
         context_menu.exec(QCursor.pos())
+    
+    def add_to_favorite(self):
+        """添加选中歌曲到收藏列表"""
+        selected_rows = set(item.row() for item in self.feature_table.selectedItems())
+        
+        if not selected_rows:
+            QMessageBox.information(self, "提示", "请先选择要收藏的歌曲")
+            return
+        
+        # 获取主窗口对象
+        main_window = self.parent()
+        while main_window and not isinstance(main_window, QMainWindow):
+            main_window = main_window.parent()
+        
+        if not main_window or not hasattr(main_window, 'profile_tab'):
+            QMessageBox.warning(self, "错误", "无法获取主窗口实例，收藏功能无法使用")
+            return
+        
+        # 获取ProfileTab实例
+        profile_tab = main_window.profile_tab
+        if not profile_tab:
+            QMessageBox.warning(self, "错误", "无法获取用户档案选项卡实例，收藏功能无法使用")
+            return
+        
+        success_count = 0
+        
+        # 处理每个选中的行
+        for row in selected_rows:
+            try:
+                # 获取歌曲数据
+                file_id = self.feature_table.item(row, 0).text()
+                song_name = self.feature_table.item(row, 2).text()
+                artist = self.feature_table.item(row, 4).text()
+                file_path = self.feature_table.item(row, 5).text()
+                duration = self.feature_table.item(row, 6).text()
+                
+                # 获取封面路径
+                cover_path = ""
+                feature = self.db.get_feature(file_id)
+                if feature and "cover_path" in feature:
+                    cover_path = feature["cover_path"]
+                    
+                # 准备收藏数据
+                song_data = {
+                    "song_id": file_id,
+                    "song_name": song_name,
+                    "artist": artist,
+                    "file_path": file_path,
+                    "duration": float(duration) if duration else 0,
+                    "album": feature.get("album", "未知专辑") if feature else "未知专辑",
+                    "cover_path": cover_path
+                }
+                
+                # 添加到收藏
+                if profile_tab.add_to_favorites(song_data):
+                    success_count += 1
+            except Exception as e:
+                print(f"添加收藏失败: {str(e)}")
+                traceback.print_exc()
+        
+        # 显示结果
+        if success_count > 0:
+            QMessageBox.information(
+                self, 
+                "收藏结果", 
+                f"成功添加 {success_count} 首歌曲到收藏列表。"
+            )
+        else:
+            QMessageBox.warning(
+                self, 
+                "收藏结果", 
+                "未能添加任何歌曲到收藏列表。"
+            )
     
     def delete_selected_features(self):
         """删除选中的特征"""

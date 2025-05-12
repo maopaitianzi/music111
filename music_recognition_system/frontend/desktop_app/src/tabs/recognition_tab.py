@@ -994,6 +994,55 @@ class RecognitionTab(QWidget):
             self.current_song = song_name
             self.current_artist = artist_name
             
+            # 添加到历史记录
+            try:
+                # 获取主窗口对象
+                main_window = self.window()  # 使用window()获取主窗口
+                print(f"主窗口对象: {main_window}")
+                if main_window:
+                    # 打印主窗口类型
+                    print(f"主窗口类型: {type(main_window).__name__}")
+                    print(f"主窗口属性: {dir(main_window)}")
+                    
+                    # 检查是否有profile_tab属性
+                    has_profile_tab = hasattr(main_window, 'profile_tab')
+                    print(f"是否有profile_tab属性: {has_profile_tab}")
+                    
+                    if has_profile_tab:
+                        profile_tab = main_window.profile_tab
+                        print(f"ProfileTab类型: {type(profile_tab).__name__}")
+                        
+                        # 创建历史记录项
+                        history_item = {
+                            "song_id": result.get('id', ''),
+                            "song_name": song_name,
+                            "artist": artist_name,
+                            "file_path": result.get('file_path', ''),
+                            "confidence": result.get('confidence', 0),
+                            "album": result.get('album', '未知专辑'),
+                            "cover_path": cover_path or result.get('cover_url', '')
+                        }
+                        print(f"准备添加历史记录: {history_item}")
+                        
+                        # 检查是否有add_to_history方法
+                        has_add_method = hasattr(profile_tab, 'add_to_history')
+                        print(f"是否有add_to_history方法: {has_add_method}")
+                        
+                        if has_add_method:
+                            # 添加到历史记录
+                            profile_tab.add_to_history(history_item)
+                            print("历史记录添加成功")
+                        else:
+                            print("ProfileTab没有add_to_history方法")
+                    else:
+                        print("主窗口没有profile_tab属性")
+                else:
+                    print("未找到主窗口实例")
+            except Exception as e:
+                print(f"添加历史记录失败: {str(e)}")
+                import traceback
+                traceback.print_exc()
+            
             # 自动跳转到歌曲库并搜索（如果启用了自动搜索）
             if hasattr(self, 'auto_search_enabled') and self.auto_search_enabled:
                 self.search_in_library()
@@ -1118,9 +1167,7 @@ class RecognitionTab(QWidget):
         """在歌曲库中搜索当前识别的歌曲"""
         if hasattr(self, 'current_song') and self.current_song:
             # 获取主窗口
-            main_window = self.parent()
-            while main_window and not hasattr(main_window, 'get_library_tab'):
-                main_window = main_window.parent()
+            main_window = self.window()  # 使用window()获取主窗口
             
             # 如果找到主窗口，获取歌曲库选项卡并执行搜索
             if main_window and hasattr(main_window, 'get_library_tab'):
@@ -1129,4 +1176,194 @@ class RecognitionTab(QWidget):
                     # 切换到歌曲库选项卡
                     main_window.switch_to_tab(2)  # 索引2对应歌曲库选项卡
                     # 执行搜索
-                    library_tab.search_music(self.current_song, self.current_artist) 
+                    library_tab.search_music(self.current_song, self.current_artist)
+
+    def display_recognition_result(self, result):
+        """显示识别结果"""
+        # 显示结果面板
+        self.result_panel.show()
+        self.result_title.setText("识别结果")
+        
+        if result.get('success', False):
+            song_name = result.get('song_name', '未知歌曲')
+            artist = result.get('artist', '未知艺术家')
+            confidence = result.get('confidence', 0)
+            
+            # 显示基本信息
+            self.song_label.setText(f"歌曲: {song_name}")
+            self.artist_label.setText(f"艺术家: {artist}")
+            
+            # 显示封面
+            cover_url = result.get('cover_url', '')
+            if cover_url and os.path.exists(cover_url):
+                pixmap = QPixmap(cover_url)
+                if not pixmap.isNull():
+                    pixmap = pixmap.scaled(200, 200, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                    self.cover_label.setPixmap(pixmap)
+                else:
+                    self.cover_label.setText("无法加载封面")
+            else:
+                self.cover_label.setText("无封面")
+            
+            # 信任度
+            confidence_text = f"{confidence:.2%}" if isinstance(confidence, float) else str(confidence)
+            self.confidence_label.setText(f"信任度: {confidence_text}")
+            
+            # 额外信息
+            extra_info = []
+            if 'album' in result and result['album']:
+                extra_info.append(f"专辑: {result['album']}")
+            if 'release_year' in result and result['release_year']:
+                extra_info.append(f"年份: {result['release_year']}")
+            if 'genre' in result and result['genre']:
+                extra_info.append(f"流派: {result['genre']}")
+            
+            if extra_info:
+                self.extra_info_label.setText('\n'.join(extra_info))
+            else:
+                self.extra_info_label.setText("无更多信息")
+            
+            # 保存结果以备后用
+            self.current_result = result
+            
+            # 添加到历史记录
+            try:
+                # 获取主窗口对象
+                main_window = self.window()  # 使用window()代替parent()
+                print(f"主窗口对象: {main_window}")
+                if main_window:
+                    # 打印主窗口类型
+                    print(f"主窗口类型: {type(main_window).__name__}")
+                    print(f"主窗口属性: {dir(main_window)}")
+                    
+                    # 检查是否有profile_tab属性
+                    has_profile_tab = hasattr(main_window, 'profile_tab')
+                    print(f"是否有profile_tab属性: {has_profile_tab}")
+                    
+                    if has_profile_tab:
+                        profile_tab = main_window.profile_tab
+                        print(f"ProfileTab类型: {type(profile_tab).__name__}")
+                        
+                        # 创建历史记录项
+                        history_item = {
+                            "song_id": result.get('id', ''),
+                            "song_name": song_name,
+                            "artist": artist,
+                            "file_path": result.get('file_path', ''),
+                            "confidence": confidence,
+                            "album": result.get('album', '未知专辑'),
+                            "cover_path": cover_url
+                        }
+                        print(f"准备添加历史记录: {history_item}")
+                        
+                        # 检查是否有add_to_history方法
+                        has_add_method = hasattr(profile_tab, 'add_to_history')
+                        print(f"是否有add_to_history方法: {has_add_method}")
+                        
+                        if has_add_method:
+                            # 添加到历史记录
+                            profile_tab.add_to_history(history_item)
+                            print("历史记录添加成功")
+                        else:
+                            print("ProfileTab没有add_to_history方法")
+                    else:
+                        print("主窗口没有profile_tab属性")
+                else:
+                    print("未找到主窗口实例")
+            except Exception as e:
+                print(f"添加历史记录失败: {str(e)}")
+                import traceback
+                traceback.print_exc()
+            
+            # 显示操作按钮
+            self.search_button.show()
+            
+            # 添加收藏按钮
+            if not hasattr(self, 'favorite_button'):
+                self.favorite_button = QPushButton("添加到收藏")
+                self.favorite_button.setStyleSheet("""
+                    QPushButton {
+                        background-color: #e74c3c;
+                        color: white;
+                        border: none;
+                        padding: 8px 16px;
+                        border-radius: 4px;
+                    }
+                    QPushButton:hover {
+                        background-color: #c0392b;
+                    }
+                """)
+                self.favorite_button.clicked.connect(self.add_current_to_favorite)
+                self.result_buttons_layout.addWidget(self.favorite_button)
+            self.favorite_button.show()
+        else:
+            # 识别失败
+            self.song_label.setText("未能识别该音频")
+            self.artist_label.setText("")
+            self.cover_label.setText("无结果")
+            self.confidence_label.setText("")
+            self.extra_info_label.setText(result.get('message', '识别失败，请尝试使用更长的音频片段或更清晰的录音。'))
+            
+            # 隐藏按钮
+            self.search_button.hide()
+            if hasattr(self, 'favorite_button'):
+                self.favorite_button.hide()
+            
+            # 清除当前结果
+            self.current_result = None
+
+    def add_current_to_favorite(self):
+        """将当前识别结果添加到收藏"""
+        if not self.current_result:
+            return
+        
+        # 获取主窗口对象
+        main_window = self.window()  # 使用window()代替parent()
+        if not main_window:
+            QMessageBox.warning(self, "错误", "无法获取主窗口实例，收藏功能无法使用")
+            return
+        
+        # 检查是否有profile_tab属性
+        if not hasattr(main_window, 'profile_tab'):
+            QMessageBox.warning(self, "错误", "主窗口没有profile_tab属性，收藏功能无法使用")
+            return
+            
+        # 获取ProfileTab实例
+        profile_tab = main_window.profile_tab
+        if not profile_tab:
+            QMessageBox.warning(self, "错误", "无法获取用户档案选项卡实例，收藏功能无法使用")
+            return
+        
+        try:
+            # 准备收藏数据
+            song_data = {
+                "song_id": self.current_result.get('id', ''),
+                "song_name": self.current_result.get('song_name', '未知歌曲'),
+                "artist": self.current_result.get('artist', '未知艺术家'),
+                "file_path": self.current_result.get('file_path', ''),
+                "album": self.current_result.get('album', '未知专辑'),
+                "cover_path": self.current_result.get('cover_url', '')
+            }
+            
+            # 添加到收藏
+            if profile_tab.add_to_favorites(song_data):
+                QMessageBox.information(self, "收藏成功", "已将歌曲添加到收藏列表")
+                
+                # 更新按钮状态
+                self.favorite_button.setText("已收藏")
+                self.favorite_button.setEnabled(False)
+                self.favorite_button.setStyleSheet("""
+                    QPushButton {
+                        background-color: #7f8c8d;
+                        color: white;
+                        border: none;
+                        padding: 8px 16px;
+                        border-radius: 4px;
+                    }
+                """)
+            else:
+                QMessageBox.information(self, "收藏提示", "该歌曲已在收藏列表中")
+        except Exception as e:
+            QMessageBox.warning(self, "收藏失败", f"添加到收藏时出错: {str(e)}")
+            print(f"添加收藏失败: {str(e)}")
+            traceback.print_exc() 

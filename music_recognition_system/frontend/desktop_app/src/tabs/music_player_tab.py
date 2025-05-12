@@ -590,17 +590,32 @@ class MusicPlayerTab(QWidget):
             row = self.playlist.row(item)
             self.playlist.takeItem(row)
     
-    def play_music(self, music_path):
-        """播放音乐功能"""
+    def play_music(self, music_path, song_name=None, artist=None, cover_path=None):
+        """播放音乐功能
+        
+        Args:
+            music_path: 音乐文件路径
+            song_name: 歌曲名称（可选）
+            artist: 艺术家名称（可选）
+            cover_path: 封面图片路径（可选）
+        """
         if music_path and os.path.exists(music_path):
             self.current_music_path = music_path
             self.player_widget.set_media(music_path)
             self.player_widget.player.play()
             self.player_widget.play_button.setText("=")
             
-            # 更新界面信息
+            # 获取文件名（用于显示和添加到播放列表）
             file_name = os.path.basename(music_path)
-            self.song_info_label.setText(file_name)
+            
+            # 使用提供的歌曲名和艺术家名（如果有）
+            display_name = song_name if song_name else file_name
+            display_text = display_name
+            if artist and artist.lower() not in ["未知", "unknown", "未知艺术家"]:
+                display_text = f"{display_name} - {artist}"
+            
+            # 更新界面信息
+            self.song_info_label.setText(display_text)
             
             # 将文件添加到播放列表（如果不存在）
             found = False
@@ -613,13 +628,20 @@ class MusicPlayerTab(QWidget):
                     break
             
             if not found:
-                item = QListWidgetItem(file_name)
+                item = QListWidgetItem(display_text)
                 item.setData(Qt.ItemDataRole.UserRole, music_path)
                 self.playlist.addItem(item)
                 self.playlist.setCurrentItem(item)
                 self.current_playlist_index = self.playlist.count() - 1
+            
+            # 处理封面图片
+            if cover_path and os.path.exists(cover_path):
+                # 直接使用提供的封面图片
+                self.set_cover_image(cover_path)
+                self.set_background_image(cover_path)
+                return
                 
-            # 尝试获取封面和音乐信息
+            # 如果没有提供封面或提供的封面不存在，尝试从数据库获取
             try:
                 # 尝试从数据库获取更丰富的信息
                 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -644,16 +666,20 @@ class MusicPlayerTab(QWidget):
                     
                     # 如果找到匹配的文件，更新界面信息
                     if matched_file:
-                        # 更新歌曲名称
-                        song_name = matched_file.get("song_name", file_name)
-                        self.song_info_label.setText(f"{song_name}")
+                        # 更新歌曲名称（如果没有提供）
+                        if not song_name and matched_file.get("song_name"):
+                            song_name = matched_file.get("song_name")
+                            display_text = song_name
+                            if artist:
+                                display_text = f"{song_name} - {artist}"
+                            self.song_info_label.setText(display_text)
                         
-                        # 尝试加载封面
-                        cover_path = matched_file.get("cover_path")
-                        if cover_path and os.path.exists(cover_path):
-                            self.set_cover_image(cover_path)
+                        # 尝试加载封面（如果没有提供）
+                        db_cover_path = matched_file.get("cover_path")
+                        if db_cover_path and os.path.exists(db_cover_path):
+                            self.set_cover_image(db_cover_path)
                             # 设置背景为封面图片
-                            self.set_background_image(cover_path)
+                            self.set_background_image(db_cover_path)
                         else:
                             # 没有封面，使用默认背景
                             self.reset_cover_display()

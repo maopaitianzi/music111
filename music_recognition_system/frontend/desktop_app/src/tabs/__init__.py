@@ -1,6 +1,8 @@
 # 音乐识别系统选项卡模块 
-from tabs.recognition_tab import RecognitionTab
-from tabs.library_tab import LibraryTab
-from tabs.history_tab import HistoryTab
-from tabs.feature_library_tab import FeatureLibraryTab
-from tabs.music_player_tab import MusicPlayerTab 
+from .recognition_tab import RecognitionTab
+from .library_tab import LibraryTab
+from .feature_library_tab import FeatureLibraryTab
+from .music_player_tab import MusicPlayerTab
+from .profile_tab import ProfileTab
+
+__all__ = ['RecognitionTab', 'LibraryTab', 'FeatureLibraryTab', 'MusicPlayerTab', 'ProfileTab'] 

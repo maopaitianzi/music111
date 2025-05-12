@@ -7,17 +7,7 @@ from tabs.recognition_tab import RecognitionTab
 from tabs.library_tab import LibraryTab
 from tabs.feature_library_tab import FeatureLibraryTab
 from tabs.music_player_tab import MusicPlayerTab
-
-class ProfileTab(QWidget):
-    """用户档案选项卡"""
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        layout = QVBoxLayout()
-        label = QLabel("用户档案 - 开发中")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(label)
-        self.setLayout(layout)
+from tabs.profile_tab import ProfileTab
 
 class MusicRecognitionApp(QMainWindow):
     def __init__(self):
@@ -72,7 +62,7 @@ class MusicRecognitionApp(QMainWindow):
         self.recognition_tab = RecognitionTab(self)
         self.feature_library_tab = FeatureLibraryTab()
         self.library_tab = LibraryTab()
-        self.profile_tab = ProfileTab()
+        self.profile_tab = ProfileTab(self)
         self.music_player_tab = MusicPlayerTab(self)
         
         # 添加选项卡

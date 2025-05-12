@@ -1,0 +1,45 @@
+{
+  "username": "音乐爱好者",
+  "favorites": [
+    {
+      "song_id": "aa6bde8f432a00d081dd9087972c1209",
+      "song_name": "心を刺す言葉だけ (feat. 初音ミク & 可不)",
+      "artist": "MIMI/初音ミク/可不",
+      "file_path": "C:/Users/86181/Desktop/音乐识别系统/Music\\M8000022sSgq2VgAAE.mp3",
+      "duration": 192.0,
+      "album": "未知专辑",
+      "cover_path": "",
+      "favorite_time": "2025-05-12 20:40:09"
+    },
+    {
+      "song_id": "616cc927d3fbe75be4c02f8f6400e4af",
+      "song_name": "M80000122UQ70Dg80E.mp3",
+      "artist": "MIMI/初音ミク",
+      "file_path": "C:/Users/86181/Desktop/音乐识别系统/Music\\M80000122UQ70Dg80E.mp3",
+      "duration": 155.0,
+      "album": "未知专辑",
+      "cover_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\covers\\cover_616cc927d3fbe75be4c02f8f6400e4af.png",
+      "favorite_time": "2025-05-12 20:52:17"
+    }
+  ],
+  "history": [
+    {
+      "song_id": "",
+      "song_name": "午夜DJ",
+      "artist": "",
+      "file_path": "C:/Users/86181/Desktop/音乐识别系统/Music/午夜DJ.mp3",
+      "confidence": 0.7564766957519738,
+      "album": "未知专辑",
+      "cover_path": "",
+      "recognition_time": "2025-05-12 21:29:58"
+    }
+  ],
+  "settings": {
+    "theme": "深色模式",
+    "language": "简体中文",
+    "startup": "默认显示识别页面",
+    "audio_quality": "高质量",
+    "recognition_duration": "30秒",
+    "recording_device": "默认系统设备"
+  }
+}
