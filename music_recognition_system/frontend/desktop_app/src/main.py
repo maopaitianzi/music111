@@ -6,17 +6,7 @@ from PyQt6.QtCore import Qt
 from tabs.recognition_tab import RecognitionTab
 from tabs.library_tab import LibraryTab
 from tabs.feature_library_tab import FeatureLibraryTab
-
-class SettingsTab(QWidget):
-    """设置选项卡"""
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        layout = QVBoxLayout()
-        label = QLabel("设置 - 开发中")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(label)
-        self.setLayout(layout)
+from tabs.music_player_tab import MusicPlayerTab
 
 class ProfileTab(QWidget):
     """用户档案选项卡"""
@@ -82,14 +72,14 @@ class MusicRecognitionApp(QMainWindow):
         self.recognition_tab = RecognitionTab(self)
         self.feature_library_tab = FeatureLibraryTab()
         self.library_tab = LibraryTab()
-        self.settings_tab = SettingsTab()
         self.profile_tab = ProfileTab()
+        self.music_player_tab = MusicPlayerTab(self)
         
         # 添加选项卡
         self.tab_widget.addTab(self.recognition_tab, "识别")
-        self.tab_widget.addTab(self.feature_library_tab, "特征库")
-        self.tab_widget.addTab(self.library_tab, "音乐库")
-        self.tab_widget.addTab(self.settings_tab, "设置")
+        self.tab_widget.addTab(self.feature_library_tab, "音乐库")
+        self.tab_widget.addTab(self.library_tab, "在线音乐")
+        self.tab_widget.addTab(self.music_player_tab, "歌曲播放")
         self.tab_widget.addTab(self.profile_tab, "我的")
         
         main_layout.addWidget(self.tab_widget)
@@ -102,6 +92,10 @@ class MusicRecognitionApp(QMainWindow):
     def get_library_tab(self):
         """获取音乐库选项卡实例"""
         return self.library_tab
+        
+    def get_music_player_tab(self):
+        """获取歌曲播放选项卡实例"""
+        return self.music_player_tab
 
 def main():
     app = QApplication(sys.argv)

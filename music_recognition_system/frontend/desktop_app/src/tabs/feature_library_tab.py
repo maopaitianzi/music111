@@ -1246,6 +1246,41 @@ class FeatureLibraryTab(QWidget):
                 "文件路径不存在或无效。"
             )
             return
+        
+        # 尝试首先使用歌曲播放选项卡播放
+        try:
+            # 获取主窗口
+            main_window = self.window()
+            
+            # 检查是否实现了获取歌曲播放选项卡的方法
+            if hasattr(main_window, 'get_music_player_tab'):
+                # 获取歌曲播放选项卡
+                music_player_tab = main_window.get_music_player_tab()
+                
+                # 切换到歌曲播放选项卡
+                main_window.tab_widget.setCurrentWidget(music_player_tab)
+                
+                # 获取歌曲名称
+                song_name = None
+                for i in range(self.feature_table.columnCount()):
+                    if self.feature_table.horizontalHeaderItem(i).text() == "歌曲名":
+                        song_name = self.feature_table.item(row, i).text()
+                        break
+                
+                # 添加到播放列表并播放
+                music_player_tab.play_music(file_path)
+                
+                # 显示成功信息
+                QMessageBox.information(
+                    self,
+                    "播放中",
+                    f"歌曲已添加到播放列表并开始播放: {os.path.basename(file_path)}"
+                )
+                return
+        except Exception as e:
+            print(f"使用歌曲播放选项卡播放失败: {str(e)}")
+            print(f"堆栈信息: {traceback.format_exc()}")
+            # 如果失败，回退到使用系统默认程序播放
             
         # 尝试使用系统默认程序打开音频文件
         try:

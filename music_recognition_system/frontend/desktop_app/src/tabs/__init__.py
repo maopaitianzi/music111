@@ -2,4 +2,5 @@
 from tabs.recognition_tab import RecognitionTab
 from tabs.library_tab import LibraryTab
 from tabs.history_tab import HistoryTab
-from tabs.feature_library_tab import FeatureLibraryTab 
+from tabs.feature_library_tab import FeatureLibraryTab
+from tabs.music_player_tab import MusicPlayerTab 
