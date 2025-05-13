@@ -357,8 +357,13 @@ class FeatureExtractionThread(QThread):
 class FeatureLibraryTab(QWidget):
     """特征库创建选项卡"""
     
+    # 信号定义
+    play_song_signal = pyqtSignal(str, str)  # 播放歌曲信号(歌曲路径, 歌曲名)
+    
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.parent = parent
+        
         # 设置固定的数据库路径，使用项目根目录的绝对路径
         current_dir = os.path.dirname(os.path.abspath(__file__))
         workspace_root = os.path.abspath(os.path.join(current_dir, "../../../../../"))
@@ -367,15 +372,52 @@ class FeatureLibraryTab(QWidget):
         
         # 确保数据库目录存在
         os.makedirs(self.database_path, exist_ok=True)
+        # 确保特征文件目录存在
+        features_dir = os.path.join(self.database_path, "features")
+        os.makedirs(features_dir, exist_ok=True)
+        # 确保封面图片目录存在
+        covers_dir = os.path.join(self.database_path, "covers")
+        os.makedirs(covers_dir, exist_ok=True)
         
-        self.db = FeatureDatabase(self.database_path)
+        self.selected_folder = None
+        self.current_features = []
+        
+        # 初始化特征数据库
+        try:
+            from music_recognition_system.utils.audio_features import FeatureDatabase
+            self.db = FeatureDatabase(self.database_path)
+            # 显式执行数据加载操作
+            _ = self.db.get_all_files()
+            print(f"特征数据库初始化成功，索引路径: {self.db.index_path if hasattr(self.db, 'index_path') else '未知'}")
+            # 检查索引文件是否存在
+            if hasattr(self.db, 'index_path') and self.db.index_path and os.path.exists(self.db.index_path):
+                print(f"特征索引文件存在: {self.db.index_path}")
+                try:
+                    with open(self.db.index_path, 'r', encoding='utf-8') as f:
+                        index_content = json.load(f)
+                        print(f"索引文件包含 {len(index_content)} 条记录")
+                except Exception as e:
+                    print(f"读取索引文件失败: {str(e)}")
+            else:
+                print(f"特征索引文件不存在，将创建新索引")
+        except Exception as e:
+            print(f"特征数据库初始化失败: {str(e)}")
+            traceback.print_exc()
+            self.db = None
         
         # 创建默认封面图标
         self.default_cover = self._create_default_cover()
         
         self.setup_ui()
         self.load_existing_features()
-        
+    
+    def showEvent(self, event):
+        """当选项卡被显示时触发"""
+        super().showEvent(event)
+        # 刷新特征列表，确保显示最新数据
+        self.refresh_feature_list()
+        print("特征库选项卡被显示，自动刷新特征列表")
+    
     def setup_ui(self):
         main_layout = QVBoxLayout()
         
@@ -721,6 +763,38 @@ class FeatureLibraryTab(QWidget):
     def refresh_feature_list(self):
         """刷新特征列表显示"""
         try:
+            # 防止频繁刷新
+            current_time = time.time()
+            if hasattr(self, '_last_refresh_time'):
+                # 如果距离上次刷新不足0.5秒，则跳过（降低时间阈值，提高响应速度）
+                if current_time - self._last_refresh_time < 0.5:
+                    print("刷新过于频繁，跳过此次刷新")
+                    return
+            
+            # 更新刷新时间戳
+            self._last_refresh_time = current_time
+            print(f"正在刷新特征列表，时间戳: {self._last_refresh_time}")
+                
+            # 确保数据库初始化成功
+            if not self.db:
+                print("数据库未初始化，尝试重新初始化...")
+                try:
+                    current_dir = os.path.dirname(os.path.abspath(__file__))
+                    workspace_root = os.path.abspath(os.path.join(current_dir, "../../../../../"))
+                    self.database_path = os.path.join(workspace_root, "music_recognition_system/database/music_features_db")
+                    print(f"尝试重新初始化数据库: {self.database_path}")
+                    
+                    # 确保数据库目录存在
+                    os.makedirs(self.database_path, exist_ok=True)
+                    
+                    from music_recognition_system.utils.audio_features import FeatureDatabase
+                    self.db = FeatureDatabase(self.database_path)
+                    print("数据库重新初始化成功")
+                except Exception as init_error:
+                    print(f"数据库重新初始化失败: {str(init_error)}")
+                    traceback.print_exc()
+                    return
+            
             # 迁移旧数据
             self._migrate_old_features()
             
@@ -734,6 +808,8 @@ class FeatureLibraryTab(QWidget):
             # 更新表格
             self.update_feature_table(files)
             
+            print(f"刷新特征列表完成，共 {len(files)} 条记录")
+            
         except Exception as e:
             print(f"刷新特征列表失败: {str(e)}")
             traceback.print_exc()
@@ -742,15 +818,38 @@ class FeatureLibraryTab(QWidget):
         """迁移旧特征数据，添加歌曲名和作者信息"""
         try:
             # 确保数据库已正确加载
-            if not hasattr(self.db, 'feature_index') or not self.db.feature_index:
-                print("数据库未正确加载或为空，无需迁移")
+            if not hasattr(self.db, 'feature_index'):
+                print("数据库无feature_index属性，无法进行迁移")
+                return
+            
+            if not self.db.feature_index:
+                # 尝试主动加载特征索引
+                try:
+                    if hasattr(self.db, 'index_path') and self.db.index_path and os.path.exists(self.db.index_path):
+                        print(f"尝试从 {self.db.index_path} 加载特征索引")
+                        with open(self.db.index_path, 'r', encoding='utf-8') as f:
+                            self.db.feature_index = json.load(f)
+                            print(f"成功加载特征索引，包含 {len(self.db.feature_index)} 条记录")
+                    else:
+                        print("无法找到有效的特征索引文件，将创建新索引")
+                        self.db.feature_index = {}
+                except Exception as load_err:
+                    print(f"尝试加载特征索引出错: {str(load_err)}")
+                    traceback.print_exc()
+                    self.db.feature_index = {}
+            
+            # 再次检查，如果索引仍为空则无需迁移
+            if not self.db.feature_index:
+                print("特征索引为空，无需迁移")
                 return
 
-            # 调试输出
-            print(f"当前数据库包含 {len(self.db.feature_index)} 条记录")
-            first_item = next(iter(self.db.feature_index.items())) if self.db.feature_index else None
-            if first_item:
-                file_id, info = first_item
+            # 打印索引大小
+            index_size = len(self.db.feature_index)
+            print(f"当前数据库包含 {index_size} 条记录")
+            
+            if index_size > 0:
+                # 获取第一条记录的信息
+                file_id, info = next(iter(self.db.feature_index.items()))
                 print(f"示例记录: ID={file_id}, 信息={info}")
                 print(f"字段: {', '.join(info.keys())}")
             
@@ -866,6 +965,19 @@ class FeatureLibraryTab(QWidget):
                                         print(f"迁移时添加封面失败: {str(e)}")
                 except Exception as e:
                     print(f"迁移特征 {file_id} 失败: {str(e)}")
+            
+            # 确保更新后的索引被持久化保存
+            try:
+                if hasattr(self.db, 'save_index'):
+                    print("迁移后调用save_index保存索引...")
+                    self.db.save_index()
+                elif hasattr(self.db, 'index_path') and self.db.index_path:
+                    # 手动保存索引
+                    with open(self.db.index_path, 'w', encoding='utf-8') as f:
+                        json.dump(self.db.feature_index, f, ensure_ascii=False, indent=2)
+                    print(f"迁移后手动保存特征索引到: {self.db.index_path}")
+            except Exception as save_err:
+                print(f"迁移后保存索引失败: {str(save_err)}")
             
             print(f"迁移完成，共 {total_count} 条记录，成功迁移 {migrated_count} 条")
             
@@ -1142,9 +1254,9 @@ class FeatureLibraryTab(QWidget):
             return
         
         # 获取主窗口对象
-        main_window = self.parent()
+        main_window = self.parent
         while main_window and not isinstance(main_window, QMainWindow):
-            main_window = main_window.parent()
+            main_window = main_window.parent
         
         if not main_window or not hasattr(main_window, 'profile_tab'):
             QMessageBox.warning(self, "错误", "无法获取主窗口实例，收藏功能无法使用")
@@ -1738,12 +1850,40 @@ class FeatureLibraryTab(QWidget):
                         feature_data["cover_path"] = cover_save_path
                 
                 # 添加到数据库
-                self.db.add_feature(feature_data)
+                success = self.db.add_feature(feature_data)
                 
-                # 更新UI
-                self.refresh_feature_list()
+                if success:
+                    # 确保特征索引被持久化保存
+                    try:
+                        if hasattr(self.db, 'save_index'):
+                            print("单个文件添加后调用save_index保存索引...")
+                            self.db.save_index()
+                        elif hasattr(self.db, 'index_path') and self.db.index_path:
+                            # 如果有特征索引文件路径但没有save_index方法，手动保存
+                            with open(self.db.index_path, 'w', encoding='utf-8') as f:
+                                json.dump(self.db.feature_index, f, ensure_ascii=False, indent=2)
+                            print(f"单个文件添加后手动保存特征索引到: {self.db.index_path}")
+                            
+                        # 打印特征索引大小
+                        if hasattr(self.db, 'feature_index'):
+                            print(f"添加后特征索引包含 {len(self.db.feature_index)} 条记录")
+                    except Exception as save_err:
+                        print(f"保存特征索引失败: {str(save_err)}")
+                        traceback.print_exc()
                 
-                return True
+                    # 重置刷新时间戳，强制进行刷新
+                    if hasattr(self, '_last_refresh_time'):
+                        delattr(self, '_last_refresh_time')
+                        
+                    # 刷新特征库列表
+                    self.refresh_feature_list()
+                    
+                    # 发送通知，告知其他组件刷新特征库
+                    if hasattr(self.parent, 'feature_library_updated') and isinstance(self.parent.feature_library_updated, pyqtSignal):
+                        print("单个文件添加后发送feature_library_updated信号")
+                        self.parent.feature_library_updated.emit()
+                
+                return success
                 
             except Exception as e:
                 print(f"处理文件失败: {str(e)}")
@@ -1841,6 +1981,36 @@ class FeatureLibraryTab(QWidget):
             self.status_label.setText(message)
             self.status_label.setStyleSheet("color: #1DB954; font-weight: bold;")
             
+            # 验证数据是否确实被保存
+            try:
+                if hasattr(self.db, 'feature_index') and self.db.feature_index:
+                    index_size = len(self.db.feature_index)
+                    print(f"特征提取完成，数据库索引包含 {index_size} 条记录")
+                    
+                    # 确保索引被持久化保存
+                    if hasattr(self.db, 'save_index'):
+                        print("调用save_index确保索引被保存...")
+                        self.db.save_index()
+                    elif hasattr(self.db, 'index_path'):
+                        # 尝试手动保存索引
+                        try:
+                            index_path = self.db.index_path
+                            if index_path:
+                                with open(index_path, 'w', encoding='utf-8') as f:
+                                    json.dump(self.db.feature_index, f, ensure_ascii=False, indent=2)
+                                print(f"手动保存特征索引到: {index_path}")
+                        except Exception as save_err:
+                            print(f"手动保存索引失败: {str(save_err)}")
+                else:
+                    print("警告: 特征提取完成，但特征索引为空或不存在")
+            except Exception as check_err:
+                print(f"验证特征数据保存时出错: {str(check_err)}")
+                traceback.print_exc()
+            
+            # 重置刷新时间戳，强制进行刷新
+            if hasattr(self, '_last_refresh_time'):
+                delattr(self, '_last_refresh_time')
+                
             # 刷新特征库列表
             self.refresh_feature_list()
             
@@ -1848,6 +2018,11 @@ class FeatureLibraryTab(QWidget):
             QMessageBox.information(self, "特征提取完成", 
                                    f"成功提取了 {success_count} 个音频文件的特征。\n"
                                    "现在可以使用识别功能来识别音乐了。")
+            
+            # 发送通知，告知其他组件刷新特征库
+            if hasattr(self.parent, 'feature_library_updated') and isinstance(self.parent.feature_library_updated, pyqtSignal):
+                print("发送feature_library_updated信号")
+                self.parent.feature_library_updated.emit()
         else:
             self.status_label.setText(message)
             self.status_label.setStyleSheet("color: #FF0000; font-weight: bold;")

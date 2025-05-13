@@ -1,6 +1,6 @@
 import sys
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QTabWidget, QLabel
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 
 # 导入登录界面
 from login import LoginWidget
@@ -13,10 +13,16 @@ from tabs.music_player_tab import MusicPlayerTab
 from tabs.profile_tab import ProfileTab
 
 class MusicRecognitionApp(QMainWindow):
+    # 定义特征库更新信号
+    feature_library_updated = pyqtSignal()
+    
     def __init__(self):
         super().__init__()
         self.user_nickname = "音乐爱好者"  # 默认昵称
         self.setup_ui()
+        
+        # 连接特征库更新信号
+        self.feature_library_updated.connect(self.on_feature_library_updated)
         
     def setup_ui(self):
         self.setWindowTitle("音乐识别系统")
@@ -64,7 +70,7 @@ class MusicRecognitionApp(QMainWindow):
         
         # 初始化各选项卡实例并保存引用
         self.recognition_tab = RecognitionTab(self)
-        self.feature_library_tab = FeatureLibraryTab()
+        self.feature_library_tab = FeatureLibraryTab(self)  # 传入self作为parent
         self.library_tab = LibraryTab()
         self.profile_tab = ProfileTab(self)
         self.music_player_tab = MusicPlayerTab(self)
@@ -77,6 +83,12 @@ class MusicRecognitionApp(QMainWindow):
         self.tab_widget.addTab(self.profile_tab, "我的")
         
         main_layout.addWidget(self.tab_widget)
+    
+    def on_feature_library_updated(self):
+        """当特征库更新时，通知识别选项卡更新"""
+        print("特征库已更新，通知识别选项卡刷新特征库")
+        if hasattr(self.recognition_tab, 'reload_feature_database'):
+            self.recognition_tab.reload_feature_database()
     
     def switch_to_tab(self, tab_index):
         """切换到指定的选项卡"""

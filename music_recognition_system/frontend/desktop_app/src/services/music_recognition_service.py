@@ -6,6 +6,7 @@ import librosa
 import numpy as np
 import tempfile
 from typing import Dict, Any, Optional, List
+import sys
 
 class MusicRecognitionService(QObject):
     """音乐识别服务类，负责与后端API交互"""
@@ -370,4 +371,69 @@ class MusicRecognitionService(QObject):
         except Exception as e:
             print(f"计算准确率时出错: {str(e)}")
             # 出错时返回一个默认的中等准确率
-            return 0.75 
+            return 0.75
+
+    def reload_feature_database(self):
+        """重新加载特征数据库"""
+        try:
+            print("正在重新加载特征数据库...")
+            
+            try:
+                # 尝试通过API重新加载特征数据库
+                response = requests.post(
+                    f"{self.api_base_url}/reload_features",
+                    json={"action": "reload"},
+                    timeout=5  # 降低超时时间，加快重试本地加载的速度
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    if result.get("success", False):
+                        print(f"成功通过API重新加载特征数据库: {result.get('message', '')}")
+                        return True
+                    else:
+                        print(f"API重新加载特征数据库失败: {result.get('error', '未知错误')}")
+                else:
+                    print(f"API错误: {response.status_code} - {response.text}")
+            except requests.exceptions.RequestException as req_err:
+                print(f"API请求异常: {str(req_err)}")
+                
+            # 如果API调用失败，尝试本地重新加载
+            print("尝试本地重新加载特征数据库...")
+            
+            # 导入FeatureDatabase类
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.abspath(os.path.join(current_dir, "../../../../../"))
+            
+            # 确保系统路径包含项目根目录
+            if project_root not in sys.path:
+                sys.path.append(project_root)
+            
+            try:
+                from music_recognition_system.utils.audio_features import FeatureDatabase
+                
+                # 初始化特征数据库
+                database_path = os.path.join(project_root, "music_recognition_system/database/music_features_db")
+                
+                # 确保数据库目录存在
+                os.makedirs(database_path, exist_ok=True)
+                
+                # 强制重新初始化数据库对象
+                db = FeatureDatabase(database_path)
+                
+                # 执行一次刷新操作，触发数据加载
+                _ = db.get_all_files()
+                
+                print("特征数据库本地重新加载完成")
+                return True
+            except Exception as db_error:
+                print(f"本地数据库重新加载失败: {str(db_error)}")
+                import traceback
+                traceback.print_exc()
+                return False
+                
+        except Exception as e:
+            print(f"重新加载特征数据库出错: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return False 

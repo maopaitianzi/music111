@@ -1,4 +1,14 @@
 {
-  "admin": "admin123",
-  "demo": "demo123"
+  "admin": {
+    "password": "admin123",
+    "nickname": "admin"
+  },
+  "demo": {
+    "password": "demo123",
+    "nickname": "demo"
+  },
+  "f22015314": {
+    "password": "f22015314",
+    "nickname": "黄韦霖"
+  }
 }

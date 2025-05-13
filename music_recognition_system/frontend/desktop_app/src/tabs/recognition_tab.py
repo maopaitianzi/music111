@@ -348,10 +348,22 @@ class RecognitionTab(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        # 初始化服务
-        self.recognition_service = MusicRecognitionService()
-        # 初始化UI
+        self.parent = parent
         self.setup_ui()
+        
+        # 初始化音乐识别服务
+        self.recognition_service = MusicRecognitionService()
+        
+    def reload_feature_database(self):
+        """重新加载特征数据库"""
+        try:
+            print("正在重新加载特征数据库...")
+            if hasattr(self, 'recognition_service'):
+                self.recognition_service.reload_feature_database()
+                print("特征数据库重新加载完成")
+        except Exception as e:
+            print(f"重新加载特征数据库出错: {str(e)}")
+            traceback.print_exc()
         
     def setup_ui(self):
         layout = QVBoxLayout()

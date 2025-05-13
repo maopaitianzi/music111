@@ -4,6 +4,8 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QStackedWidget)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QPixmap, QIcon
+import os
+import json
 
 # 导入注册界面
 from register import RegisterWidget
@@ -24,11 +26,11 @@ class LoginWidget(QWidget):
         self.register_widget.register_successful.connect(self.auto_fill_credentials)
         self.register_widget.hide()
         
-        # 示例用户名和密码（实际应用中应该使用数据库或配置文件）
-        self.valid_credentials = {
-            "admin": {"password": "admin123", "nickname": "管理员"},
-            "user": {"password": "user123", "nickname": "普通用户"}
-        }
+        # 加载用户凭证
+        self.valid_credentials = self.load_users()
+        
+        # 加载记住的登录信息
+        self.load_remembered_credential()
         
     def setup_ui(self):
         self.setWindowTitle("音乐识别系统 - 登录")
@@ -145,6 +147,11 @@ class LoginWidget(QWidget):
         checkbox_layout = QHBoxLayout()
         self.remember_checkbox = QCheckBox("记住密码")
         checkbox_layout.addWidget(self.remember_checkbox)
+        
+        # 添加记住用户名选项
+        self.remember_username_checkbox = QCheckBox("记住用户名")
+        checkbox_layout.addWidget(self.remember_username_checkbox)
+        
         checkbox_layout.addStretch(1)
         main_layout.addLayout(checkbox_layout)
         
@@ -199,10 +206,14 @@ class LoginWidget(QWidget):
         if username in self.valid_credentials and self.valid_credentials[username]["password"] == password:
             self.error_label.setText("")
             
-            # 记住密码逻辑（实际应用中应该安全地存储）
-            if self.remember_checkbox.isChecked():
-                print(f"记住用户: {username}")
-                # 这里应添加安全存储密码的代码
+            # 根据复选框状态处理记住用户名和密码
+            remember_password = self.remember_checkbox.isChecked()
+            remember_username = self.remember_username_checkbox.isChecked()
+            
+            if remember_password or remember_username:
+                self.save_remembered_credential(username, password if remember_password else "", remember_username)
+            else:
+                self.clear_remembered_credential()
             
             # 登录成功，发射信号
             self.login_successful.emit(self.valid_credentials[username]["nickname"])
@@ -234,12 +245,33 @@ class LoginWidget(QWidget):
         # 将新注册的用户添加到有效凭证中
         self.valid_credentials[username] = {"password": password, "nickname": nickname}
         
+        # 保存用户信息到文件
+        self.save_users()
+        
         # 自动填充到登录表单
         self.username_input.setText(username)
         self.password_input.setText(password)
         
         # 设置为记住密码
         self.remember_checkbox.setChecked(True)
+        
+    def save_users(self):
+        """保存用户凭证到文件"""
+        # 获取用户数据文件路径
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        user_data_dir = os.path.join(current_dir, "..", "data")
+        user_file = os.path.join(user_data_dir, "users.json")
+        
+        # 确保目录存在
+        os.makedirs(user_data_dir, exist_ok=True)
+        
+        # 保存用户数据
+        try:
+            with open(user_file, 'w', encoding='utf-8') as f:
+                json.dump(self.valid_credentials, f, ensure_ascii=False, indent=2)
+            print(f"用户数据已保存到: {user_file}")
+        except Exception as e:
+            print(f"保存用户数据失败: {str(e)}")
 
     def handle_register(self):
         """处理注册逻辑"""
@@ -255,6 +287,117 @@ class LoginWidget(QWidget):
         
         self.register_widget.show()
         self.hide()
+
+    def load_users(self):
+        """从文件加载用户凭证"""
+        # 获取用户数据文件路径
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        user_data_dir = os.path.join(current_dir, "..", "data")
+        user_file = os.path.join(user_data_dir, "users.json")
+        
+        # 确保目录存在
+        os.makedirs(user_data_dir, exist_ok=True)
+        
+        # 如果文件不存在，创建默认用户
+        if not os.path.exists(user_file):
+            default_users = {
+                "admin": {"password": "admin123", "nickname": "管理员"},
+                "user": {"password": "user123", "nickname": "普通用户"}
+            }
+            with open(user_file, 'w', encoding='utf-8') as f:
+                json.dump(default_users, f, ensure_ascii=False, indent=2)
+            return default_users
+        
+        # 读取用户数据
+        try:
+            with open(user_file, 'r', encoding='utf-8') as f:
+                # 兼容旧版格式 (扁平字典) 和新版格式 (带nickname的嵌套字典)
+                users = json.load(f)
+                formatted_users = {}
+                for username, data in users.items():
+                    if isinstance(data, str):  # 旧格式: "username": "password"
+                        formatted_users[username] = {"password": data, "nickname": username}
+                    else:  # 新格式: "username": {"password": "xxx", "nickname": "xxx"}
+                        formatted_users[username] = data
+                return formatted_users
+        except Exception as e:
+            print(f"读取用户数据失败: {str(e)}")
+            # 创建默认用户
+            default_users = {
+                "admin": {"password": "admin123", "nickname": "管理员"},
+                "user": {"password": "user123", "nickname": "普通用户"}
+            }
+            return default_users
+
+    def save_remembered_credential(self, username, password, remember_username=True):
+        """保存记住的用户名和密码"""
+        try:
+            # 获取保存记住用户文件的路径
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            user_data_dir = os.path.join(current_dir, "..", "data")
+            remember_file = os.path.join(user_data_dir, "remembered_user.json")
+            
+            # 确保目录存在
+            os.makedirs(user_data_dir, exist_ok=True)
+            
+            # 保存凭证数据
+            remembered_data = {
+                "username": username if remember_username else "",
+                "password": password,
+                "remember_username": remember_username
+            }
+            
+            with open(remember_file, 'w', encoding='utf-8') as f:
+                json.dump(remembered_data, f, ensure_ascii=False, indent=2)
+                
+            print(f"已保存记住的用户凭证: 用户名={bool(remember_username)}, 密码={bool(password)}")
+        except Exception as e:
+            print(f"保存记住的用户凭证失败: {str(e)}")
+    
+    def load_remembered_credential(self):
+        """加载记住的用户名和密码"""
+        try:
+            # 获取记住用户文件的路径
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            user_data_dir = os.path.join(current_dir, "..", "data")
+            remember_file = os.path.join(user_data_dir, "remembered_user.json")
+            
+            # 如果文件存在，则加载记住的凭证
+            if os.path.exists(remember_file):
+                with open(remember_file, 'r', encoding='utf-8') as f:
+                    remembered_data = json.load(f)
+                    
+                username = remembered_data.get("username", "")
+                password = remembered_data.get("password", "")
+                remember_username = remembered_data.get("remember_username", True)
+                
+                # 自动填充用户名和密码
+                if username:
+                    self.username_input.setText(username)
+                    self.remember_username_checkbox.setChecked(True)
+                    
+                if password:
+                    self.password_input.setText(password)
+                    self.remember_checkbox.setChecked(True)
+                    
+                print(f"已加载记住的用户凭证: 用户名={bool(username)}, 密码={bool(password)}")
+        except Exception as e:
+            print(f"加载记住的用户凭证失败: {str(e)}")
+    
+    def clear_remembered_credential(self):
+        """清除记住的用户名和密码"""
+        try:
+            # 获取记住用户文件的路径
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            user_data_dir = os.path.join(current_dir, "..", "data")
+            remember_file = os.path.join(user_data_dir, "remembered_user.json")
+            
+            # 如果文件存在，则删除它
+            if os.path.exists(remember_file):
+                os.remove(remember_file)
+                print("已清除记住的用户凭证")
+        except Exception as e:
+            print(f"清除记住的用户凭证失败: {str(e)}")
 
 # 如果直接运行这个文件，则显示登录窗口用于测试
 if __name__ == "__main__":
