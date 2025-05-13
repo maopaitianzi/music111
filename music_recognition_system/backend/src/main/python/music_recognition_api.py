@@ -6,6 +6,7 @@ import json
 import time
 from typing import Dict, Any, List, Tuple, Optional
 import logging
+import shutil
 
 # 设置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -589,36 +590,120 @@ def add_to_database():
                 "error": "文件名为空"
             }), 400
         
-        # 保存临时文件
+        # 获取文件内容
+        file_content = audio_file.read()
+        
+        # 创建临时文件
         temp_dir = os.path.join(current_dir, "../../../temp")
         os.makedirs(temp_dir, exist_ok=True)
         temp_path = os.path.join(temp_dir, f"db_add_{int(time.time())}.wav")
-        audio_file.save(temp_path)
+        with open(temp_path, 'wb') as f:
+            f.write(file_content)
+        
+        # 保存原始文件路径 - 添加此行以记录上传的原始文件相对于项目根目录的路径
+        original_file_path = os.path.join("Music", audio_file.filename)
+        save_path = os.path.join(os.path.dirname(os.path.dirname(current_dir)), "Music", audio_file.filename)
+        
+        # 确保Music目录存在
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        
+        # 复制上传的文件到Music目录
+        try:
+            shutil.copy2(temp_path, save_path)
+            logger.info(f"已保存文件到: {save_path}")
+        except Exception as e:
+            logger.error(f"保存文件到Music目录失败: {str(e)}")
         
         # 提取特征
-        features = feature_extractor.extract_features(temp_path)
-        
-        # 添加到数据库
-        success = feature_db.add_feature(features)
-        
-        # 删除临时文件
-        os.remove(temp_path)
-        
-        if success:
-            return jsonify({
-                "success": True,
-                "message": f"成功添加 {audio_file.filename} 到数据库"
-            })
-        else:
+        extractor = AudioFeatureExtractor()
+        try:
+            extracted_features = extractor.extract_features(temp_path)
+            
+            # 使用保存到Music目录的文件路径，而不是临时文件路径
+            extracted_features["file_path"] = original_file_path.replace('\\', '/')
+            
+            # 获取或设置元数据
+            metadata = json.loads(request.form.get('metadata', '{}'))
+            if metadata:
+                extracted_features["song_name"] = metadata.get("name", "")
+                extracted_features["author"] = metadata.get("artist", "")
+                extracted_features["album"] = metadata.get("album", "")
+                extracted_features["year"] = metadata.get("year", "")
+                extracted_features["genre"] = metadata.get("genre", "")
+            
+            # 添加到数据库
+            file_id = None
+            try:
+                success = feature_db.add_feature(extracted_features)
+                if success:
+                    # 获取添加后的文件ID
+                    file_name = extracted_features.get("file_name", "")
+                    if file_name:
+                        # 计算文件ID
+                        import hashlib
+                        file_id = hashlib.md5(file_name.encode()).hexdigest()
+                        logger.info(f"添加成功，文件ID: {file_id}")
+            except Exception as db_error:
+                logger.error(f"添加到数据库异常: {str(db_error)}")
+                success = False
+            
+            # 删除临时文件
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+            
+            if success and file_id:
+                # 确保返回完整的响应信息
+                song_name = extracted_features.get("song_name", "未知歌曲")
+                artist = extracted_features.get("author", "未知艺术家")
+                
+                # 如果song_name为空，使用文件名
+                if not song_name or song_name.strip() == "":
+                    song_name = os.path.splitext(os.path.basename(extracted_features.get("file_name", "")))[0]
+                
+                logger.info(f"返回成功响应: file_id={file_id}, song_name={song_name}, artist={artist}")
+                
+                return jsonify({
+                    "success": True,
+                    "file_name": extracted_features.get("file_name", ""),
+                    "feature_id": file_id,
+                    "song_name": song_name,
+                    "artist": artist,
+                    "message": f"成功添加 {audio_file.filename} 到数据库"
+                })
+            else:
+                # 如果添加失败但没有明确的错误，提供更具体的错误消息
+                error_msg = "添加到数据库失败"
+                details = ""
+                
+                if not success:
+                    details = "数据库操作失败，可能是权限问题或磁盘空间不足"
+                elif not file_id:
+                    details = "无法生成有效的文件ID"
+                
+                logger.error(f"返回失败响应: error={error_msg}, details={details}")
+                
+                return jsonify({
+                    "success": False,
+                    "error": error_msg,
+                    "details": details
+                }), 500
+            
+        except Exception as e:
+            logger.error(f"特征提取异常: {str(e)}")
             return jsonify({
                 "success": False,
-                "error": "添加到数据库失败"
-            }), 500
+                "error": "特征提取失败",
+                "details": "无法从音频文件中提取特征，可能是格式不兼容或文件损坏"
+            }), 400
             
     except Exception as e:
+        logger.error(f"添加到数据库出错: {str(e)}", exc_info=True)
         return jsonify({
             "success": False,
-            "error": str(e)
+            "error": str(e),
+            "details": "服务器处理请求时发生异常"
         }), 500
 
 if __name__ == '__main__':

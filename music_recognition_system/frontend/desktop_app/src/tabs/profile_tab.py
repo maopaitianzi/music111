@@ -109,9 +109,10 @@ class ProfileTab(QWidget):
         # 用户信息
         info_layout = QVBoxLayout()
         
-        username_label = QLabel(self.user_data.get("username", "音乐爱好者"))
-        username_label.setFont(QFont("Arial", 16, QFont.Weight.Bold))
-        username_label.setStyleSheet("color: #FFFFFF;")
+        # 保存用户名标签引用以便更新
+        self.username_label = QLabel(self.user_data.get("username", "音乐爱好者"))
+        self.username_label.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        self.username_label.setStyleSheet("color: #FFFFFF;")
         
         stats_layout = QHBoxLayout()
         
@@ -130,7 +131,7 @@ class ProfileTab(QWidget):
         stats_layout.addWidget(self.history_count_label)
         stats_layout.addStretch(1)
         
-        info_layout.addWidget(username_label)
+        info_layout.addWidget(self.username_label)
         info_layout.addLayout(stats_layout)
         info_layout.addStretch(1)
         
@@ -971,4 +972,15 @@ class ProfileTab(QWidget):
             self.favorites_count_label.setText(f"收藏: {favorites_count}")
         
         if hasattr(self, 'history_count_label'):
-            self.history_count_label.setText(f"历史: {history_count}") 
+            self.history_count_label.setText(f"历史: {history_count}")
+    
+    def update_nickname(self, nickname):
+        """更新用户昵称显示"""
+        if hasattr(self, 'username_label'):
+            self.username_label.setText(nickname)
+            
+        # 更新用户数据中的用户名
+        self.user_data["username"] = nickname
+        self.save_user_data()
+        
+        print(f"个人资料页面已更新用户昵称: {nickname}") 

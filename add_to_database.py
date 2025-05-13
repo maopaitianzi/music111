@@ -10,6 +10,9 @@ def add_music_to_database(audio_file_path, metadata=None):
     参数:
         audio_file_path: 音频文件路径
         metadata: 可选的元数据字典，包含歌曲信息
+        
+    返回:
+        成功返回True，失败返回False或(False, error_message)
     """
     # API端点
     url = "http://localhost:5000/api/database/add"
@@ -17,7 +20,7 @@ def add_music_to_database(audio_file_path, metadata=None):
     # 检查文件是否存在
     if not os.path.exists(audio_file_path):
         print(f"错误: 文件不存在 - {audio_file_path}")
-        return
+        return False, "文件不存在"
     
     # 准备文件
     files = {
@@ -44,25 +47,52 @@ def add_music_to_database(audio_file_path, metadata=None):
     # 发送请求
     print(f"正在添加文件到数据库: {os.path.basename(audio_file_path)}...")
     try:
-        response = requests.post(url, files=files, data=data)
+        response = requests.post(url, files=files, data=data, timeout=60)
         
         # 检查响应
         if response.status_code == 200:
-            result = response.json()
-            if result.get("success", False):
-                print(f"成功添加到数据库: {result.get('file_name', '')}")
-                print(f"特征ID: {result.get('feature_id', '')}")
-            else:
-                print(f"添加失败: {result.get('error', '未知错误')}")
+            try:
+                result = response.json()
+                if result.get("success", False):
+                    file_name = result.get('file_name', '')
+                    feature_id = result.get('feature_id', '')
+                    print(f"成功添加到数据库: {file_name}")
+                    print(f"特征ID: {feature_id}")
+                    return True
+                else:
+                    error_msg = result.get('error', '未知错误')
+                    details = result.get('details', '')
+                    if details:
+                        error_msg += f" - {details}"
+                    print(f"添加失败: {error_msg}")
+                    return False, error_msg
+            except json.JSONDecodeError:
+                # 无法解析JSON时，检查响应文本
+                if "成功" in response.text:
+                    print("检测到成功响应（非JSON格式）")
+                    return True
+                print(f"解析响应失败: {response.text}")
+                return False, f"服务器返回非JSON响应: {response.text[:100]}"
         else:
             print(f"请求失败: HTTP {response.status_code}")
             print(response.text)
+            return False, f"HTTP错误: {response.status_code}"
     
+    except requests.exceptions.Timeout:
+        print("请求超时，特征提取可能需要较长时间")
+        return False, "请求超时，特征提取可能需要较长时间"
+    except requests.exceptions.ConnectionError:
+        print("连接错误，请确保后端API服务已启动")
+        return False, "连接错误，请确保后端API服务已启动"
     except Exception as e:
         print(f"发生错误: {str(e)}")
+        return False, str(e)
     finally:
         # 关闭文件
-        files['audio_file'][1].close()
+        try:
+            files['audio_file'][1].close()
+        except:
+            pass
 
 if __name__ == "__main__":
     # 检查命令行参数

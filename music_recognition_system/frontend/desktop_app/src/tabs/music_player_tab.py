@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
     QLabel, QSlider, QListWidget, QProgressBar, QFrame,
-    QSizePolicy, QListWidgetItem, QFileDialog, QApplication
+    QSizePolicy, QListWidgetItem, QFileDialog, QApplication, QMessageBox
 )
 from PyQt6.QtCore import Qt, QUrl, QTimer, QSize
 from PyQt6.QtGui import QIcon, QPixmap, QColor, QPalette, QFont, QPainter, QBrush
@@ -590,7 +590,65 @@ class MusicPlayerTab(QWidget):
             artist: 艺术家名称（可选）
             cover_path: 封面图片路径（可选）
         """
-        if music_path and os.path.exists(music_path):
+        # 处理相对路径
+        if not os.path.isabs(music_path):
+            # 计算绝对路径 - 相对于项目根目录
+            try:
+                current_file = os.path.abspath(__file__)
+                # music_player_tab.py -> tabs -> src -> desktop_app -> frontend -> music_recognition_system -> 项目根目录
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_file))))))
+                # 将路径分隔符标准化
+                normalized_file_path = music_path.replace('/', os.path.sep)
+                absolute_path = os.path.join(project_root, normalized_file_path)
+                print(f"原始路径: {music_path}")
+                print(f"转换为绝对路径: {absolute_path}")
+                music_path = absolute_path
+            except Exception as path_error:
+                print(f"路径转换出错: {str(path_error)}")
+                # 继续使用原始路径
+        
+        # 验证文件存在
+        original_path = music_path
+        if not os.path.exists(music_path):
+            print(f"文件不存在: {music_path}")
+            
+            # 尝试修复路径 - 检查是否包含临时文件路径
+            if "temp" in music_path and "db_add_" in music_path:
+                print("检测到临时文件路径，尝试查找真实文件...")
+                
+                # 尝试在Music目录中查找同名文件
+                try:
+                    current_file = os.path.abspath(__file__)
+                    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_file))))))
+                    music_dir = os.path.join(project_root, "Music")
+                    
+                    if os.path.exists(music_dir):
+                        # 获取原文件名并在Music目录中查找
+                        file_name = os.path.basename(music_path)
+                        for root, _, files in os.walk(music_dir):
+                            for file in files:
+                                if file.endswith(os.path.splitext(file_name)[1]):
+                                    # 找到可能的匹配文件
+                                    potential_path = os.path.join(root, file)
+                                    print(f"找到可能的替代文件: {potential_path}")
+                                    music_path = potential_path
+                                    if os.path.exists(music_path):
+                                        print(f"使用替代文件路径: {music_path}")
+                                        break
+                            if os.path.exists(music_path):
+                                break
+                except Exception as search_error:
+                    print(f"在Music目录中查找文件失败: {str(search_error)}")
+            
+            # 最终检查文件是否存在
+            if not os.path.exists(music_path):
+                error_msg = f"文件路径不存在或无效。\n\n原始路径: {original_path}"
+                if original_path != music_path:
+                    error_msg += f"\n\n尝试修复后路径: {music_path}"
+                QMessageBox.warning(self, "播放错误", error_msg)
+                return False
+        
+        try:
             self.current_music_path = music_path
             self.player_widget.set_media(music_path)
             self.player_widget.player.play()
@@ -630,7 +688,7 @@ class MusicPlayerTab(QWidget):
                 # 直接使用提供的封面图片
                 self.set_cover_image(cover_path)
                 self.set_background_image(cover_path)
-                return
+                return True
                 
             # 如果没有提供封面或提供的封面不存在，尝试从数据库获取
             try:
@@ -651,9 +709,22 @@ class MusicPlayerTab(QWidget):
                     # 查找匹配的音乐信息
                     matched_file = None
                     for file_info in all_files:
-                        if file_info.get("file_path") == music_path:
+                        db_file_path = file_info.get("file_path", "")
+                        # 检查绝对路径是否匹配
+                        if db_file_path == music_path:
                             matched_file = file_info
                             break
+                            
+                        # 检查数据库中的相对路径转换为绝对路径后是否匹配
+                        if not os.path.isabs(db_file_path):
+                            try:
+                                db_normalized_path = db_file_path.replace('/', os.path.sep)
+                                db_absolute_path = os.path.join(project_root, db_normalized_path)
+                                if db_absolute_path == music_path:
+                                    matched_file = file_info
+                                    break
+                            except:
+                                pass
                     
                     # 如果找到匹配的文件，更新界面信息
                     if matched_file:
@@ -689,7 +760,18 @@ class MusicPlayerTab(QWidget):
                 # 出错时使用默认背景
                 self.reset_cover_display()
                 self.set_default_background()
-        
+                
+            return True
+        except Exception as e:
+            print(f"播放音乐时出错: {str(e)}")
+            print(f"堆栈信息: {traceback.format_exc()}")
+            QMessageBox.warning(
+                self, 
+                "播放错误", 
+                f"无法播放文件: {str(e)}"
+            )
+            return False
+    
     def pause_music(self):
         """暂停音乐功能"""
         if self.player_widget.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:

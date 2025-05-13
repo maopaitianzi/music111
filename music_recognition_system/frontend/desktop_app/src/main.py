@@ -2,6 +2,9 @@ import sys
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QTabWidget, QLabel
 from PyQt6.QtCore import Qt
 
+# 导入登录界面
+from login import LoginWidget
+
 # 导入选项卡
 from tabs.recognition_tab import RecognitionTab
 from tabs.library_tab import LibraryTab
@@ -12,6 +15,7 @@ from tabs.profile_tab import ProfileTab
 class MusicRecognitionApp(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.user_nickname = "音乐爱好者"  # 默认昵称
         self.setup_ui()
         
     def setup_ui(self):
@@ -86,11 +90,53 @@ class MusicRecognitionApp(QMainWindow):
     def get_music_player_tab(self):
         """获取歌曲播放选项卡实例"""
         return self.music_player_tab
+        
+    def set_user_nickname(self, nickname):
+        """设置当前用户昵称"""
+        self.user_nickname = nickname
+        # 更新个人资料页面的昵称显示
+        if hasattr(self.profile_tab, 'update_nickname'):
+            self.profile_tab.update_nickname(nickname)
+        print(f"设置当前用户昵称: {nickname}")
 
 def main():
     app = QApplication(sys.argv)
-    window = MusicRecognitionApp()
-    window.show()
+    
+    # 创建登录窗口
+    login_widget = LoginWidget()
+    
+    # 使登录窗口居中显示
+    screen_geometry = app.primaryScreen().geometry()
+    x = (screen_geometry.width() - login_widget.width()) // 2
+    y = (screen_geometry.height() - login_widget.height()) // 2
+    login_widget.move(x, y)
+    
+    # 创建但不显示主窗口
+    main_window = MusicRecognitionApp()
+    
+    # 当登录成功时显示主窗口
+    def on_login_successful(nickname):
+        # 隐藏登录界面和注册界面
+        login_widget.hide()
+        if hasattr(login_widget, 'register_widget'):
+            login_widget.register_widget.hide()
+        
+        # 设置用户昵称
+        main_window.set_user_nickname(nickname)
+        
+        # 使主窗口居中显示
+        x = (screen_geometry.width() - main_window.width()) // 2
+        y = (screen_geometry.height() - main_window.height()) // 2
+        main_window.move(x, y)
+        
+        main_window.show()
+    
+    # 连接登录成功信号
+    login_widget.login_successful.connect(on_login_successful)
+    
+    # 显示登录窗口
+    login_widget.show()
+    
     sys.exit(app.exec())
 
 if __name__ == "__main__":

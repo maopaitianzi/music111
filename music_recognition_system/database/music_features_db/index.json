@@ -69,14 +69,14 @@
     "author": "",
     "cover_path": ""
   },
-  "81c6c9b9b3c6d1695a404d7e16635dc6": {
-    "file_name": "db_add_1746954442.wav",
-    "file_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system\\backend\\src\\main\\python\\../../../temp\\db_add_1746954442.wav",
-    "duration": 0,
-    "feature_path": "C:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\features\\81c6c9b9b3c6d1695a404d7e16635dc6.pkl",
-    "added_time": "2025-05-11 17:07:27",
-    "song_name": "",
-    "author": "",
+  "df71b421ab1b18f22b5059055f211412": {
+    "file_name": "db_add_1747134677.wav",
+    "file_path": "Music/netease_eb7f46474bf0042b7377ae87b5238b23.mp3.mp3",
+    "duration": 1.0,
+    "feature_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\features\\df71b421ab1b18f22b5059055f211412.pkl",
+    "added_time": "2025-05-13 19:11:23",
+    "song_name": "网易云音乐 - eb7f46474bf0042b7377ae87b5238b23.mp3",
+    "author": "未知艺术家",
     "cover_path": ""
   }
 }

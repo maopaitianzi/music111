@@ -1316,14 +1316,75 @@ class FeatureLibraryTab(QWidget):
         # 获取选中行的文件路径
         row = selected_items[0].row()
         file_path = self.feature_table.item(row, 5).text()
+        file_id = self.feature_table.item(row, 0).text()
         
-        if not file_path or not os.path.exists(file_path):
-            QMessageBox.warning(
-                self, 
-                "无法播放", 
-                "文件路径不存在或无效。"
-            )
-            return
+        # 处理可能的相对路径
+        if not os.path.isabs(file_path):
+            # 计算绝对路径 - 相对于项目根目录
+            current_file = os.path.abspath(__file__)
+            # feature_library_tab.py -> tabs -> src -> desktop_app -> frontend -> music_recognition_system -> 项目根目录
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_file))))))
+            # 将路径分隔符标准化
+            normalized_file_path = file_path.replace('/', os.path.sep)
+            absolute_path = os.path.join(project_root, normalized_file_path)
+            print(f"原始路径: {file_path}")
+            print(f"转换为绝对路径: {absolute_path}")
+            file_path = absolute_path
+        
+        original_path = file_path
+        if not os.path.exists(file_path):
+            print(f"文件不存在: {file_path}")
+            
+            # 尝试修复路径 - 检查是否包含临时文件路径
+            if "temp" in file_path and "db_add_" in file_path:
+                print("检测到临时文件路径，尝试查找真实文件...")
+                
+                # 尝试在Music目录中查找同名文件
+                try:
+                    music_dir = os.path.join(project_root, "Music")
+                    
+                    if os.path.exists(music_dir):
+                        # 获取原始特征信息以获取文件名线索
+                        feature_data = self.db.get_feature(file_id)
+                        file_name = feature_data.get("file_name", "") if feature_data else ""
+                        
+                        # 在Music目录中查找匹配文件
+                        for root, _, files in os.walk(music_dir):
+                            for file in files:
+                                if file == file_name or file.endswith(os.path.splitext(file_name)[1]):
+                                    # 找到可能的匹配文件
+                                    potential_path = os.path.join(root, file)
+                                    print(f"找到可能的替代文件: {potential_path}")
+                                    file_path = potential_path
+                                    
+                                    # 如果找到有效文件，更新数据库中的路径
+                                    if os.path.exists(file_path):
+                                        print(f"使用替代文件路径: {file_path}")
+                                        # 计算相对路径用于更新数据库
+                                        relative_path = os.path.relpath(file_path, project_root).replace("\\", "/")
+                                        print(f"更新数据库中的路径: {relative_path}")
+                                        self.db.update_feature_info(file_id, {
+                                            "file_path": relative_path,
+                                            "update_feature": True
+                                        })
+                                        break
+                            if os.path.exists(file_path):
+                                break
+                except Exception as search_error:
+                    print(f"在Music目录中查找文件失败: {str(search_error)}")
+            
+            # 最终检查文件是否存在
+            if not os.path.exists(file_path):
+                error_msg = f"文件路径不存在或无效。\n\n原始路径: {original_path}"
+                if original_path != file_path:
+                    error_msg += f"\n\n尝试修复后路径: {file_path}"
+                    
+                QMessageBox.warning(
+                    self, 
+                    "无法播放", 
+                    error_msg
+                )
+                return
         
         # 尝试首先使用歌曲播放选项卡播放
         try:
@@ -1338,15 +1399,19 @@ class FeatureLibraryTab(QWidget):
                 # 切换到歌曲播放选项卡
                 main_window.tab_widget.setCurrentWidget(music_player_tab)
                 
-                # 获取歌曲名称
+                # 获取歌曲名称和艺术家
                 song_name = None
+                artist_name = None
+                
                 for i in range(self.feature_table.columnCount()):
-                    if self.feature_table.horizontalHeaderItem(i).text() == "歌曲名":
+                    header_text = self.feature_table.horizontalHeaderItem(i).text()
+                    if header_text == "歌曲名":
                         song_name = self.feature_table.item(row, i).text()
-                        break
+                    elif header_text == "作者":
+                        artist_name = self.feature_table.item(row, i).text()
                 
                 # 添加到播放列表并播放
-                music_player_tab.play_music(file_path)
+                music_player_tab.play_music(file_path, song_name, artist_name)
                 
                 # 显示成功信息
                 QMessageBox.information(

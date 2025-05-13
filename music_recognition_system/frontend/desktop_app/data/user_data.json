@@ -1,5 +1,5 @@
 {
-  "username": "音乐爱好者",
+  "username": "f22015314",
   "favorites": [
     {
       "song_id": "aa6bde8f432a00d081dd9087972c1209",
@@ -23,6 +23,16 @@
     }
   ],
   "history": [
+    {
+      "song_id": "",
+      "song_name": "M80000122UQ70Dg80E.mp3",
+      "artist": "MIMI/初音ミク",
+      "file_path": "C:/osu!/Songs/2344170 MIMI - tenshi no namida/audio.mp3",
+      "confidence": 0.6406738836221094,
+      "album": "未知专辑",
+      "cover_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\covers\\cover_616cc927d3fbe75be4c02f8f6400e4af.png",
+      "recognition_time": "2025-05-13 18:25:27"
+    },
     {
       "song_id": "",
       "song_name": "午夜DJ",

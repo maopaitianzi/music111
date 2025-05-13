@@ -498,6 +498,57 @@ class FeatureDatabase:
             file_name = feature_data["file_name"]
             file_id = self._generate_file_id(file_name)
             
+            # 处理文件路径 - 确保同时处理相对路径和绝对路径
+            file_path = feature_data["file_path"]
+            
+            # 检查路径是否为临时文件路径，并且文件不存在
+            if ("temp" in file_path and "db_add_" in file_path) or not os.path.exists(os.path.join(os.path.dirname(os.path.dirname(self.database_path)), file_path)):
+                print(f"检测到临时文件路径或文件不存在: {file_path}")
+                # 尝试在Music目录中查找真实文件
+                try:
+                    # 获取项目根目录
+                    project_root = os.path.abspath(os.path.join(os.path.dirname(self.database_path), "../.."))
+                    music_dir = os.path.join(project_root, "Music")
+                    
+                    if os.path.exists(music_dir):
+                        # 在Music目录中查找同名文件
+                        for root, _, files in os.walk(music_dir):
+                            for file in files:
+                                if file == file_name:
+                                    # 找到同名文件
+                                    real_path = os.path.join(root, file)
+                                    # 计算相对路径
+                                    relative_path = os.path.relpath(real_path, project_root)
+                                    # 标准化分隔符
+                                    file_path = relative_path.replace("\\", "/")
+                                    print(f"找到真实文件路径: {file_path}")
+                                    feature_data["file_path"] = file_path
+                                    break
+                            if file_path != feature_data["file_path"]:
+                                break
+                except Exception as e:
+                    print(f"尝试查找真实文件路径时出错: {str(e)}")
+            
+            # 检查路径是否为绝对路径
+            if os.path.isabs(file_path):
+                # 如果是绝对路径，尝试转换为相对路径以提高兼容性
+                try:
+                    # 从特征数据库路径向上两级（utils -> 项目根目录）
+                    project_root = os.path.abspath(os.path.join(os.path.dirname(self.database_path), "../.."))
+                    file_path = os.path.relpath(file_path, project_root)
+                    # 标准化路径分隔符为跨平台格式
+                    file_path = file_path.replace('\\', '/')
+                    print(f"将绝对路径转换为相对路径: {file_path}")
+                    feature_data["file_path"] = file_path
+                except Exception as path_error:
+                    print(f"路径转换出错: {str(path_error)}")
+                    # 保持原始路径
+            else:
+                # 已经是相对路径，确保路径分隔符是标准化的
+                file_path = file_path.replace('\\', '/')
+                feature_data["file_path"] = file_path
+                print(f"使用相对路径: {file_path}")
+            
             # 保存特征数据
             feature_path = os.path.join(self.features_dir, f"{file_id}.pkl")
             with open(feature_path, 'wb') as f:
