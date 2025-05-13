@@ -504,17 +504,8 @@ class MusicPlayerTab(QWidget):
     
     def load_test_data(self):
         """加载测试数据到播放列表"""
-        sample_songs = [
-            {"name": "午夜DJ", "path": ""},
-            {"name": "示例歌曲1", "path": ""},
-            {"name": "示例歌曲2", "path": ""},
-            {"name": "示例歌曲3", "path": ""}
-        ]
-        
-        for song in sample_songs:
-            item = QListWidgetItem(song["name"])
-            item.setData(Qt.ItemDataRole.UserRole, song["path"])
-            self.playlist.addItem(item)
+        # 移除示例歌曲，不再加载任何测试数据
+        pass
     
     def play_selected_item(self, item):
         """播放选中的歌曲"""
