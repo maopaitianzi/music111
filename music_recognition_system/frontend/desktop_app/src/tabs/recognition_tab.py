@@ -13,8 +13,8 @@ from PyQt6.QtWidgets import (
     QProgressBar, QFileDialog, QStackedWidget, QFrame, QSlider,
     QMessageBox, QStyleOption, QStyle, QSizePolicy
 )
-from PyQt6.QtCore import Qt, QUrl, QTimer, QThread, pyqtSignal, QSize
-from PyQt6.QtGui import QPixmap, QFont, QPalette, QColor, QPainter, QBrush
+from PyQt6.QtCore import Qt, QUrl, QTimer, QThread, pyqtSignal, QSize, QMimeData
+from PyQt6.QtGui import QPixmap, QFont, QPalette, QColor, QPainter, QBrush, QDragEnterEvent, QDropEvent
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 # 导入PIL用于图像处理
@@ -343,6 +343,145 @@ class RecordingWidget(QWidget):
         )
         self.waveform_widget.setStyleSheet(f"background-color: {color.name()}; border-radius: 5px;")
 
+# 添加自定义拖放组件
+class DropArea(QWidget):
+    """支持拖放音频文件的小部件"""
+    
+    fileDropped = pyqtSignal(str)  # 文件放置信号，传递文件路径
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)  # 启用拖放
+        
+        # 设置样式
+        self.setStyleSheet("""
+            background-color: #F7F7F7;
+            border: 2px dashed #999999;
+            border-radius: 10px;
+            padding: 20px;
+        """)
+        
+        # 初始化
+        self.normal_style = self.styleSheet()
+        self.highlight_style = """
+            background-color: #E6F7E6;
+            border: 2px dashed #1DB954;
+            border-radius: 10px;
+            padding: 20px;
+        """
+        
+        # 创建布局
+        layout = QVBoxLayout(self)
+        
+        # 添加图标
+        self.icon_label = QLabel()
+        self.icon_label.setText("🎵")
+        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.icon_label.setStyleSheet("font-size: 72px; color: #444444;")
+        
+        # 添加文字说明
+        self.text_label = QLabel("拖放音频文件到这里或点击选择文件")
+        self.text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.text_label.setStyleSheet("color: #444444; margin-top: 10px; font-size: 16px; font-weight: bold;")
+        
+        # 添加按钮区域
+        self.buttons_layout = QHBoxLayout()
+        
+        # 上传音频按钮
+        self.upload_button = QPushButton()
+        self.upload_button.setText("选择文件")
+        self.upload_button.setFixedSize(120, 40)
+        self.upload_button.setFont(QFont("Arial", 11, QFont.Weight.Bold))
+        self.upload_button.setStyleSheet("""
+            QPushButton {
+                background-color: #1DB954;
+                color: #FFFFFF;
+                border-radius: 20px;
+                border: 1px solid #0A8C3C;
+                padding: 5px;
+                text-align: center;
+                font-size: 11pt;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #1ED760;
+                color: #FFFFFF;
+            }
+            QPushButton:pressed {
+                color: #FFFFFF;
+            }
+        """)
+        
+        # 添加组件到布局中
+        self.buttons_layout.addStretch()
+        self.buttons_layout.addWidget(self.upload_button)
+        self.buttons_layout.addStretch()
+        
+        layout.addWidget(self.icon_label)
+        layout.addWidget(self.text_label)
+        layout.addLayout(self.buttons_layout)
+    
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        """当拖动进入组件区域时"""
+        # 检查是否包含文件
+        if event.mimeData().hasUrls():
+            # 检查是否为支持的音频文件
+            urls = event.mimeData().urls()
+            for url in urls:
+                file_path = url.toLocalFile()
+                if self.is_audio_file(file_path):
+                    event.acceptProposedAction()
+                    # 切换到高亮样式
+                    self.setStyleSheet(self.highlight_style)
+                    self.text_label.setText("释放鼠标上传文件")
+                    self.text_label.setStyleSheet("color: #1DB954; margin-top: 10px; font-size: 16px; font-weight: bold;")
+                    return
+        
+        event.ignore()
+    
+    def dragLeaveEvent(self, event):
+        """当拖动离开组件区域时"""
+        # 恢复正常样式
+        self.setStyleSheet(self.normal_style)
+        self.text_label.setText("拖放音频文件到这里或点击选择文件")
+        self.text_label.setStyleSheet("color: #444444; margin-top: 10px; font-size: 16px; font-weight: bold;")
+        event.accept()
+    
+    def dragMoveEvent(self, event):
+        """当拖动在组件内移动时"""
+        # 判断是否包含文件
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+    
+    def dropEvent(self, event: QDropEvent):
+        """当放置文件时"""
+        # 恢复正常样式
+        self.setStyleSheet(self.normal_style)
+        self.text_label.setText("拖放音频文件到这里或点击选择文件")
+        self.text_label.setStyleSheet("color: #444444; margin-top: 10px; font-size: 16px; font-weight: bold;")
+        
+        # 获取文件路径
+        urls = event.mimeData().urls()
+        if urls:
+            # 获取第一个文件
+            file_path = urls[0].toLocalFile()
+            if self.is_audio_file(file_path):
+                # 发送信号
+                self.fileDropped.emit(file_path)
+                event.acceptProposedAction()
+            else:
+                QMessageBox.warning(self, "不支持的文件类型", "请上传MP3、WAV、OGG、FLAC或M4A格式的音频文件。")
+                event.ignore()
+        else:
+            event.ignore()
+    
+    def is_audio_file(self, file_path: str) -> bool:
+        """检查是否为支持的音频文件"""
+        supported_extensions = ['.mp3', '.wav', '.ogg', '.flac', '.m4a']
+        return any(file_path.lower().endswith(ext) for ext in supported_extensions)
+
 class RecognitionTab(QWidget):
     """音乐识别选项卡"""
     
@@ -427,94 +566,17 @@ class RecognitionTab(QWidget):
         """设置上传页面"""
         layout = QVBoxLayout(page)
         
-        # 上传区域
-        upload_widget = QWidget()
-        upload_widget.setStyleSheet("""
-            background-color: #F7F7F7;
-            border: 2px dashed #999999;
-            border-radius: 10px;
-            padding: 20px;
-        """)
-        upload_layout = QVBoxLayout(upload_widget)
+        # 创建拖放区域
+        self.drop_area = DropArea()
         
-        upload_icon = QLabel()
-        # 实际应用中应该加载一个图标
-        upload_icon.setText("🎵")
-        upload_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        upload_icon.setStyleSheet("font-size: 72px; color: #444444;")
+        # 连接文件选择按钮
+        self.drop_area.upload_button.clicked.connect(self.open_file_dialog)
         
-        upload_text = QLabel("拖放音频文件到这里或点击选择文件")
-        upload_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        upload_text.setStyleSheet("color: #444444; margin-top: 10px; font-size: 16px; font-weight: bold;")
+        # 连接拖放信号
+        self.drop_area.fileDropped.connect(self.start_recognition)
         
-        # 创建水平布局放置两个按钮
-        buttons_layout = QHBoxLayout()
-        
-        # 上传音频按钮
-        self.upload_button = QPushButton()
-        self.upload_button.setText("选择文件")
-        self.upload_button.setFixedSize(120, 40)
-        self.upload_button.setFont(QFont("Arial", 11, QFont.Weight.Bold))
-        self.upload_button.setStyleSheet("""
-            QPushButton {
-                background-color: #1DB954;
-                color: #FFFFFF;
-                border-radius: 20px;
-                border: 1px solid #0A8C3C;
-                padding: 5px;
-                text-align: center;
-                font-size: 11pt;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1ED760;
-                color: #FFFFFF;
-            }
-            QPushButton:pressed {
-                color: #FFFFFF;
-            }
-        """)
-        self.upload_button.clicked.connect(self.open_file_dialog)
-        
-        # 麦克风录制按钮
-        self.record_button = QPushButton()
-        self.record_button.setText("使用麦克风")
-        self.record_button.setFixedSize(120, 40)
-        self.record_button.setFont(QFont("Arial", 11, QFont.Weight.Bold))
-        self.record_button.setStyleSheet("""
-            QPushButton {
-                background-color: #FF6B6B;
-                color: #FFFFFF;
-                border-radius: 20px;
-                border: 1px solid #E55555;
-                padding: 5px;
-                text-align: center;
-                font-size: 11pt;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #FF8080;
-                color: #FFFFFF;
-            }
-            QPushButton:pressed {
-                color: #FFFFFF;
-            }
-        """)
-        self.record_button.clicked.connect(self.show_recording_page)
-        
-        # 将两个按钮添加到水平布局，并加入间距
-        buttons_layout.addStretch()
-        buttons_layout.addWidget(self.upload_button)
-        buttons_layout.addSpacing(20)  # 在两个按钮之间添加20像素的间距
-        buttons_layout.addWidget(self.record_button)
-        buttons_layout.addStretch()
-        
-        upload_layout.addWidget(upload_icon)
-        upload_layout.addWidget(upload_text)
-        upload_layout.addLayout(buttons_layout)  # 将按钮布局添加到上传区域布局
-        
-        # 添加上传部件到上传页面
-        layout.addWidget(upload_widget)
+        # 添加拖放区域到上传页面
+        layout.addWidget(self.drop_area)
     
     def setup_result_page(self, page):
         """设置结果页面"""
@@ -808,6 +870,11 @@ class RecognitionTab(QWidget):
         """显示上传页面"""
         self.stacked_widget.setCurrentIndex(0)
         self.progress_bar.setVisible(False)
+        
+        # 停止音乐播放
+        if hasattr(self, 'player_widget') and self.player_widget.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.player_widget.player.pause()
+            self.player_widget.play_button.setText("播放")
     
     def show_result_page(self):
         """显示结果页面"""
