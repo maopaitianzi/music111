@@ -1,5 +1,5 @@
 {
-  "username": "黄韦霖",
+  "username": "第20组",
   "favorites": [
     {
       "song_id": "616cc927d3fbe75be4c02f8f6400e4af",
@@ -10,9 +10,149 @@
       "album": "未知专辑",
       "cover_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\covers\\cover_616cc927d3fbe75be4c02f8f6400e4af.png",
       "favorite_time": "2025-05-13 23:17:28"
+    },
+    {
+      "song_id": "c6de3321118aca049ce401ffa66b852e",
+      "song_name": "土坡上的狗尾巴草",
+      "artist": "卢润泽",
+      "file_path": "../../Downloads/M800001PIuFN0W0GBV.mp3",
+      "duration": 195.99,
+      "album": "未知专辑",
+      "cover_path": "",
+      "favorite_time": "2025-05-15 15:26:26"
+    },
+    {
+      "song_id": "6edb07eb79b285bd244ea9f30a121011",
+      "song_name": "电音之王",
+      "artist": "王绎龙",
+      "file_path": "../../Music/1.mp3",
+      "duration": 0.0,
+      "album": "未知专辑",
+      "cover_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\covers\\cover_6edb07eb79b285bd244ea9f30a121011.png",
+      "favorite_time": "2025-05-15 15:26:38"
     }
   ],
   "history": [
+    {
+      "song_id": "",
+      "song_name": "土坡上的狗尾巴草",
+      "artist": "卢润泽",
+      "file_path": "C:/Users/86181/Music/测试音频1.mp3",
+      "confidence": 0.7954475176913932,
+      "album": "未知专辑",
+      "cover_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\covers\\cover_c6de3321118aca049ce401ffa66b852e.png",
+      "recognition_time": "2025-05-15 15:37:04"
+    },
+    {
+      "song_id": "",
+      "song_name": "土坡上的狗尾巴草",
+      "artist": "卢润泽",
+      "file_path": "C:/Users/86181/Music/测试音频1.mp3",
+      "confidence": 0.7954475176913932,
+      "album": "未知专辑",
+      "cover_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\covers\\cover_c6de3321118aca049ce401ffa66b852e.png",
+      "recognition_time": "2025-05-15 15:36:20"
+    },
+    {
+      "song_id": "",
+      "song_name": "电音之王",
+      "artist": "王绎龙",
+      "file_path": "C:/Users/86181/Music/1.mp3",
+      "confidence": 0.6477162793546352,
+      "album": "未知专辑",
+      "cover_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\covers\\cover_6edb07eb79b285bd244ea9f30a121011.png",
+      "recognition_time": "2025-05-15 15:34:21"
+    },
+    {
+      "song_id": "",
+      "song_name": "电音之王",
+      "artist": "王绎龙",
+      "file_path": "C:/Users/86181/Music/1.mp3",
+      "confidence": 0.6477162793546352,
+      "album": "未知专辑",
+      "cover_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\covers\\cover_6edb07eb79b285bd244ea9f30a121011.png",
+      "recognition_time": "2025-05-15 15:33:20"
+    },
+    {
+      "song_id": "",
+      "song_name": "土坡上的狗尾巴草",
+      "artist": "卢润泽",
+      "file_path": "C:/Users/86181/Desktop/音乐识别系统/Music/M800001PIuFN0W0GBV.mp3",
+      "confidence": 0.6565180432597092,
+      "album": "未知专辑",
+      "cover_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\covers\\cover_c6de3321118aca049ce401ffa66b852e.png",
+      "recognition_time": "2025-05-15 15:25:22"
+    },
+    {
+      "song_id": "",
+      "song_name": "跳楼机",
+      "artist": "LBI利比",
+      "file_path": "C:/Users/86181/Desktop/音乐识别系统/Music/M800001em6GB0LiCvz.mp3",
+      "confidence": 0.735914088029319,
+      "album": "未知专辑",
+      "cover_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\covers\\cover_4aa6185bca45a959114a5cbf3abfbd7a.png",
+      "recognition_time": "2025-05-15 15:24:40"
+    },
+    {
+      "song_id": "",
+      "song_name": "天使の涙 (feat. 初音ミク)",
+      "artist": "MIMI/初音ミク",
+      "file_path": "C:/Users/86181/Music/1.mp3",
+      "confidence": 0.6477162793546352,
+      "album": "未知专辑",
+      "cover_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\covers\\cover_616cc927d3fbe75be4c02f8f6400e4af.png",
+      "recognition_time": "2025-05-15 15:24:22"
+    },
+    {
+      "song_id": "",
+      "song_name": "天使の涙 (feat. 初音ミク)",
+      "artist": "MIMI/初音ミク",
+      "file_path": "C:/Users/86181/Music/1.mp3",
+      "confidence": 0.6477162793546352,
+      "album": "未知专辑",
+      "cover_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\covers\\cover_616cc927d3fbe75be4c02f8f6400e4af.png",
+      "recognition_time": "2025-05-15 15:24:09"
+    },
+    {
+      "song_id": "",
+      "song_name": "天使の涙",
+      "artist": "MIMI/初音ミク",
+      "file_path": "C:/osu!/Songs/2344170 MIMI - tenshi no namida/audio.mp3",
+      "confidence": 0.6406738836221094,
+      "album": "未知专辑",
+      "cover_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\covers\\cover_616cc927d3fbe75be4c02f8f6400e4af.png",
+      "recognition_time": "2025-05-15 14:57:05"
+    },
+    {
+      "song_id": "",
+      "song_name": "午夜DJ",
+      "artist": "",
+      "file_path": "C:/Users/86181/Music/1.mp3",
+      "confidence": 0.6477162793546352,
+      "album": "未知专辑",
+      "cover_path": "",
+      "recognition_time": "2025-05-15 14:56:45"
+    },
+    {
+      "song_id": "",
+      "song_name": "M80000122UQ70Dg80E.mp3",
+      "artist": "MIMI/初音ミク",
+      "file_path": "C:/osu!/Songs/2344170 MIMI - tenshi no namida/audio.mp3",
+      "confidence": 0.6406738836221094,
+      "album": "未知专辑",
+      "cover_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\covers\\cover_616cc927d3fbe75be4c02f8f6400e4af.png",
+      "recognition_time": "2025-05-15 14:49:38"
+    },
+    {
+      "song_id": "",
+      "song_name": "M80000122UQ70Dg80E.mp3",
+      "artist": "MIMI/初音ミク",
+      "file_path": "C:/osu!/Songs/2344170 MIMI - tenshi no namida/audio.mp3",
+      "confidence": 0.6406738836221094,
+      "album": "未知专辑",
+      "cover_path": "c:\\Users\\86181\\Desktop\\音乐识别系统\\music_recognition_system/database/music_features_db\\covers\\cover_616cc927d3fbe75be4c02f8f6400e4af.png",
+      "recognition_time": "2025-05-15 13:06:15"
+    },
     {
       "song_id": "",
       "song_name": "午夜DJ",
@@ -95,7 +235,7 @@
     }
   ],
   "settings": {
-    "theme": "浅色模式",
+    "theme": "跟随系统",
     "language": "简体中文",
     "startup": "默认显示识别页面",
     "audio_quality": "高质量",
